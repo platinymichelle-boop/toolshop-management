@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { UserPermissions } from "@/lib/useSidebarAuth";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface SidebarMenuProps {
   permissions: UserPermissions | null;
@@ -9,6 +10,7 @@ interface SidebarMenuProps {
 }
 
 export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps) {
+  const { t } = useLanguage();
   const isAdmin = permissions?.role === "admin";
   const showRepairs = isAdmin || permissions?.can_view_repairs === true;
   const showTools = isAdmin || permissions?.can_view_tools === true;
@@ -26,14 +28,14 @@ export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps)
     <ul className="space-y-1">
       <li>
         <Link href="/dashboard" className={linkClass("/dashboard")}>
-          <span>🏠</span> Dashboard
+          {t.dashboard}
         </Link>
       </li>
 
       {showRepairs && (
         <li>
           <Link href="/repairs" className={linkClass("/repairs")}>
-            <span>🔧</span> Repairs
+            {t.repairs}
           </Link>
         </li>
       )}
@@ -41,7 +43,7 @@ export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps)
       {showTools && (
         <li>
           <Link href="/tools" className={linkClass("/tools")}>
-            <span>🧰</span> Tools / Matrițe
+            {t.tools}
           </Link>
         </li>
       )}
@@ -49,7 +51,7 @@ export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps)
       {showParts && (
         <li>
           <Link href="/spare-parts" className={linkClass("/spare-parts")}>
-            <span>📦</span> Spare Parts
+            {t.parts}
           </Link>
         </li>
       )}
@@ -57,21 +59,21 @@ export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps)
       {isAdmin && (
         <li>
           <Link href="/technicians" className={linkClass("/technicians")}>
-            <span>🧑‍🔧</span> Technicians Team
+            {t.technicians}
           </Link>
         </li>
       )}
 
       <li>
         <Link href="/improvements" className={linkClass("/improvements")}>
-          <span>💡</span> Improvements
+          {t.improvements}
         </Link>
       </li>
 
       {showReports && (
         <li>
           <Link href="/reports" className={linkClass("/reports")}>
-            <span>📊</span> Reports
+            {t.reports}
           </Link>
         </li>
       )}
@@ -79,7 +81,7 @@ export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps)
       {isAdmin && (
         <li className="pt-4 border-t border-slate-800/60 mt-4">
           <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
-            <span>⚙️</span> GPO / Settings
+            {t.settings}
           </Link>
         </li>
       )}

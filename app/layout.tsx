@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
+import { LanguageProvider } from "@/context/LanguageContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,15 +29,17 @@ export default function RootLayout({
       lang="ro"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      {/* h-screen blochează corpul la înălțimea ecranului, overflow-hidden oprește scroll-ul global */}
       <body className="h-screen w-screen flex bg-gray-50 text-slate-900 overflow-hidden">
-        {/* Sidebar-ul fix în stânga */}
-        <Sidebar />
-        
-        {/* Doar zona din dreapta va prelua derularea paginilor (overflow-y-auto) */}
-        <main className="flex-1 h-full p-8 overflow-y-auto">
-          {children}
-        </main>
+        {/* Adăugăm Providerul de limbă global în jurul întregii structuri */}
+        <LanguageProvider>
+          {/* Sidebar-ul fix în stânga */}
+          <Sidebar />
+          
+          {/* Doar zona din dreapta va prelua derularea paginilor */}
+          <main className="flex-1 h-full p-8 overflow-y-auto">
+            {children}
+          </main>
+        </LanguageProvider>
       </body>
     </html>
   );

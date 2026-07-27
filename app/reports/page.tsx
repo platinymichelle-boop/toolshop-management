@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ReportStats {
   totalRepairs: number;
@@ -12,6 +13,7 @@ interface ReportStats {
 }
 
 export default function ReportsPage() {
+  const { t } = useLanguage();
   const [stats, setStats] = useState<ReportStats>({
     totalRepairs: 0,
     completedRepairs: 0,
@@ -26,7 +28,6 @@ export default function ReportsPage() {
       try {
         setIsLoading(true);
 
-        // Extragem toate reparațiile pentru a calcula statistici complexe pe client
         const { data: repairs, error } = await supabase
           .from("repairs")
           .select("status, priority, hours_worked");
@@ -39,7 +40,6 @@ export default function ReportsPage() {
           const urgent = repairs.filter(r => r.priority === "High" || r.priority === "Urgent").length;
           const inProgress = total - completed;
 
-          // Calculăm media orelor de lucru raportate per reparație
           const validHours = repairs.filter(r => r.hours_worked !== null) as { hours_worked: number }[];
           const totalHours = validHours.reduce((sum, r) => sum + Number(r.hours_worked), 0);
           const avgHours = validHours.length > 0 ? Math.round((totalHours / total) * 10) / 10 : 0;
@@ -62,7 +62,6 @@ export default function ReportsPage() {
     calculateReports();
   }, []);
 
-  // Procentul de finalizare a tichetelor din service
   const completionRate = stats.totalRepairs > 0 
     ? Math.round((stats.completedRepairs / stats.totalRepairs) * 100) 
     : 0;
@@ -72,15 +71,15 @@ export default function ReportsPage() {
       {/* Antet */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-          Rapoarte și Analitice
+          {t.repPageTitle}
         </h1>
         <p className="text-gray-500 mt-1">
-          Performanța atelierului și indicatorii cheie de eficiență (KPI) extrași din baza de date.
+          {t.repPageSub}
         </p>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-gray-400">Se generează analizele financiare și operaționale...</p>
+        <p className="text-sm text-gray-400">{t.repLoading}</p>
       ) : (
         <>
           {/* Rândul Principal de Indicatori */}
@@ -89,10 +88,10 @@ export default function ReportsPage() {
             {/* Rata de Închidere */}
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500 mb-2">Rată Rezolvare Tichete</p>
+                <p className="text-sm font-medium text-gray-500 mb-2">{t.kpiResolveRate}</p>
                 <div className="flex items-baseline gap-2">
                   <h2 className="text-4xl font-black text-slate-800">{completionRate}%</h2>
-                  <p className="text-xs text-green-600 font-medium">din total service</p>
+                  <p className="text-xs text-green-600 font-medium">{t.kpiTotalService}</p>
                 </div>
               </div>
               <div className="w-full bg-gray-100 h-2 rounded-full mt-4 overflow-hidden">
@@ -106,48 +105,48 @@ export default function ReportsPage() {
             {/* Media de ore lucrate */}
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500 mb-2">Timp Mediu Alocat</p>
+                <p className="text-sm font-medium text-gray-500 mb-2">{t.kpiAvgTime}</p>
                 <div className="flex items-baseline gap-2">
                   <h2 className="text-4xl font-black text-slate-800">{stats.avgHoursWorked} h</h2>
-                  <p className="text-xs text-blue-600 font-medium">per echipament</p>
+                  <p className="text-xs text-blue-600 font-medium">{t.kpiPerTool}</p>
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mt-4">Calculat pe baza coloanei hours_worked</p>
+              <p className="text-xs text-gray-400 mt-4">{t.kpiHoursCalc}</p>
             </div>
 
             {/* Încărcare Urgențe */}
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500 mb-2">Tichete Critice</p>
+                <p className="text-sm font-medium text-gray-500 mb-2">{t.kpiCritical}</p>
                 <div className="flex items-baseline gap-2">
                   <h2 className="text-4xl font-black text-rose-600">{stats.urgentRepairs}</h2>
-                  <p className="text-xs text-gray-500 font-medium">prioritate ridicată</p>
+                  <p className="text-xs text-gray-500 font-medium">{t.kpiHighPriority}</p>
                 </div>
               </div>
-              <p className="text-xs text-amber-600 font-medium mt-4">⚠️ Necesită atenție imediată</p>
+              <p className="text-xs text-amber-600 font-medium mt-4">{t.kpiImmediateAttention}</p>
             </div>
 
           </div>
 
           {/* Rezumatul Tabelului Executiv */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Sumar Activitate Volum Service</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">{t.secVolTitle}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center divide-x divide-gray-100">
               <div className="p-2">
-                <span className="text-xs font-medium text-gray-400 uppercase">Total Înregistrate</span>
+                <span className="text-xs font-medium text-gray-400 uppercase">{t.tabTotal}</span>
                 <p className="text-2xl font-bold text-slate-700 mt-1">{stats.totalRepairs}</p>
               </div>
               <div className="p-2">
-                <span className="text-xs font-medium text-gray-400 uppercase">În Curs (Active)</span>
+                <span className="text-xs font-medium text-gray-400 uppercase">{t.tabActive}</span>
                 <p className="text-2xl font-bold text-amber-600 mt-1">{stats.inProgressRepairs}</p>
               </div>
               <div className="p-2">
-                <span className="text-xs font-medium text-gray-400 uppercase">Reparate Complet</span>
+                <span className="text-xs font-medium text-gray-400 uppercase">{t.tabCompleted}</span>
                 <p className="text-2xl font-bold text-green-600 mt-1">{stats.completedRepairs}</p>
               </div>
               <div className="p-2">
-                <span className="text-xs font-medium text-gray-400 uppercase">Eficiență Stoc Piese</span>
-                <p className="text-2xl font-bold text-blue-600 mt-1">Stabilă</p>
+                <span className="text-xs font-medium text-gray-400 uppercase">{t.tabStockEff}</span>
+                <p className="text-2xl font-bold text-blue-600 mt-1">{t.tabStable}</p>
               </div>
             </div>
           </div>
