@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSidebarAuth } from "@/lib/useSidebarAuth";
 import SidebarMenu from "./SidebarMenu";
 
@@ -9,6 +9,11 @@ export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
 
   const toggleSidebar = () => setIsOpen(!isOpen);
+
+  // EFECTUL CRITICAL: Închide automat sidebar-ul pe mobil când se schimbă pagina
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
 
   return (
     <>
@@ -24,7 +29,7 @@ export default function Sidebar() {
       {isOpen && (
         <div 
           className="lg:hidden fixed inset-0 bg-black/50 z-30 backdrop-blur-sm"
-          onClick={toggleSidebar}
+          onClick={() => setIsOpen(false)}
         />
       )}
 
@@ -34,7 +39,7 @@ export default function Sidebar() {
         flex flex-col justify-between h-full text-slate-300 shadow-xl shrink-0
         transition-transform duration-300 ease-in-out
         lg:static lg:translate-x-0
-        ${isOpen ? "translate-x-0" : "-translate-x-0 -left-64 lg:left-0"}
+        ${isOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         
         <div>
@@ -56,7 +61,6 @@ export default function Sidebar() {
                 <div className="h-9 bg-slate-800 rounded-xl"></div>
               </div>
             ) : (
-              // Apelăm componenta de meniu separată la pasul 2
               <SidebarMenu permissions={permissions} pathname={pathname} />
             )}
           </nav>
