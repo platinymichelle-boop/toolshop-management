@@ -77,6 +77,9 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
       const imgBeforeUrl = files.before ? await uploadPhoto(files.before, "repairs_before") : null;
       const imgAfterUrl = files.after ? await uploadPhoto(files.after, "repairs_after") : null;
 
+      // Convertim cantitatea într-un număr întreg (implicit 0 dacă nu este completată)
+      const qtyUsed = data.partQuantity ? parseInt(data.partQuantity, 10) : 0;
+
       const { error } = await supabase.from("repairs").insert({
         tool_number: data.toolNumber,
         failure: data.failure.trim(),
@@ -85,7 +88,8 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
         status: "New",
         image_before_url: imgBeforeUrl,
         image_after_url: imgAfterUrl,
-        replaced_part: data.replacedPart || null
+        replaced_part: data.replacedPart || null,
+        part_quantity: qtyUsed // 1. Salvăm cantitatea de piese folosită în coloana din Supabase
       });
 
       if (error) throw error;
@@ -99,9 +103,17 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
     }
   }
 
+
+  // CORECPȚIE: Ne asigurăm că statusurile respectă denumirile corecte ale coloanelor tale de Kanban
   async function updateRepairStatus(id: number, nextStatus: string) {
     try {
-      const { error } = await supabase.from("repairs").update({ status: nextStatus }).eq("id", id);
+      let finalStatus = nextStatus;
+      // Prevenție pentru a evita mutarea în stări invalide ce pot bloca dashboard-ul
+      if (nextStatus.toLowerCase() === "in repair") {
+        finalStatus = "In Progress";
+      }
+
+      const { error } = await supabase.from("repairs").update({ status: finalStatus }).eq("id", id);
       if (error) throw error;
       loadAllData();
     } catch (error: any) {
@@ -144,7 +156,6 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
     }
   }
 
-  // CORECPȚIE: Am adăugat `deleteRepair` în return-ul de mai jos
   return { 
     repairs, dbTools, dbTechs, dbParts, isLoading, isSaving, 
     createRepair, updateRepairStatus, exportToExcel, deleteRepair 

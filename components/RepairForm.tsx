@@ -18,11 +18,13 @@ export default function RepairForm({ t, isSaving, dbTools, dbTechs, dbParts, onS
   const [technician, setTechnician] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [replacedPart, setReplacedPart] = useState("");
+  const [partQuantity, setPartQuantity] = useState("1"); // Starea nouă pentru cantitatea piesei
   const [fileBefore, setFileBefore] = useState<File | null>(null);
   const [fileAfter, setFileAfter] = useState<File | null>(null);
 
   const resetForm = () => {
     setToolNumber(""); setFailure(""); setTechnician(""); setPriority("Medium"); setReplacedPart("");
+    setPartQuantity("1"); // Resetăm cantitatea la valoarea inițială
     setFileBefore(null); setFileAfter(null);
     const inputs = document.querySelectorAll('input[type="file"]');
     inputs.forEach((input: any) => { input.value = ""; });
@@ -30,9 +32,20 @@ export default function RepairForm({ t, isSaving, dbTools, dbTechs, dbParts, onS
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ toolNumber, failure, technician, priority, replacedPart }, { before: fileBefore, after: fileAfter }, resetForm);
+    // Trimitem și parametrul partQuantity către handleCreateRepair
+    onSubmit(
+      { 
+        toolNumber, 
+        failure, 
+        technician, 
+        priority, 
+        replacedPart, 
+        partQuantity: replacedPart ? partQuantity : "0" // Dacă nu există piesă selectată, trimitem 0
+      }, 
+      { before: fileBefore, after: fileAfter }, 
+      resetForm
+    );
   };
-
   return (
     <form onSubmit={handleFormSubmit} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4 max-w-4xl">
       <h2 className="text-base font-bold text-slate-800">{t.formTitle}</h2>
@@ -57,11 +70,27 @@ export default function RepairForm({ t, isSaving, dbTools, dbTechs, dbParts, onS
 
       <textarea value={failure} onChange={(e) => setFailure(e.target.value)} placeholder={t.inputFailure} rows={2} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-indigo-500" />
 
+      {/* Grid-ul de jos adaptat: dacă piesa e selectată, facem loc pentru inputul de cantitate */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-        <select value={replacedPart} onChange={(e) => setReplacedPart(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium">
-          <option value="">-- {t.selectPart} --</option>
-          {dbParts.map((part) => <option key={part.id} value={part.endr_code || ""}>{part.endr_code} - {part.specification}</option>)}
-        </select>
+        <div className="flex gap-2 w-full md:col-span-1">
+          <select value={replacedPart} onChange={(e) => setReplacedPart(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium">
+            <option value="">-- {t.selectPart} --</option>
+            {dbParts.map((part) => <option key={part.id} value={part.endr_code || ""}>{part.endr_code} - {part.specification}</option>)}
+          </select>
+
+          {/* INPUTUL NOU PENTRU CANTITATE: Apare doar când este selectată o piesă de schimb */}
+          {replacedPart && (
+            <input 
+              type="number" 
+              min="1" 
+              value={partQuantity} 
+              onChange={(e) => setPartQuantity(e.target.value)} 
+              placeholder="Qty"
+              className="w-20 p-2.5 bg-amber-50/60 border border-amber-200 rounded-xl text-sm font-bold text-center text-slate-800 focus:outline-amber-500"
+              title="Cantitate piese"
+            />
+          )}
+        </div>
 
         <label className="flex flex-col text-xs text-slate-500 font-bold">{t.fileBefore}
           <input type="file" accept="image/*" onChange={(e) => setFileBefore(e.target.files?.[0] || null)} className="mt-1 text-xs file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700" />

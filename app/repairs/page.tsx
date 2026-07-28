@@ -4,9 +4,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useRepairsData, Repair } from "@/lib/useRepairsData";
 import { useSidebarAuth } from "@/lib/useSidebarAuth";
 import RepairForm from "@/components/RepairForm";
+import { useRouter } from "next/navigation";
 
 export default function RepairsPage() {
   const { t } = useLanguage();
+  const router = useRouter();
   
   // Preluăm permisiunile și rolul utilizatorului logat
   const { permissions } = useSidebarAuth();
@@ -16,6 +18,40 @@ export default function RepairsPage() {
     repairs, dbTools, dbTechs, dbParts, isLoading, isSaving, 
     createRepair, updateRepairStatus, exportToExcel, deleteRepair 
   } = useRepairsData(t.alertFields, t.alertSuccess);
+
+  // 1. Forțăm sincronizarea bazei de date cu routerul Next.js după adăugare
+  const handleCreateRepair = async (
+    formData: any, 
+    files: { before: File | null; after: File | null }, 
+    resetForm: () => void
+  ) => {
+    try {
+      await createRepair(formData, files, resetForm);
+      router.refresh(); 
+    } catch (error) {
+      console.error("Eroare la crearea tichetului:", error);
+    }
+  };
+
+  // 2. Sincronizare la schimbarea statusului (mutare pe Kanban board)
+  const handleUpdateStatus = async (id: number, newStatus: string) => {
+    try {
+      await updateRepairStatus(id, newStatus);
+      router.refresh();
+    } catch (error) {
+      console.error("Eroare la actualizarea statusului:", error);
+    }
+  };
+
+  // 3. Sincronizare la ștergerea tichetului
+  const handleDeleteRepair = async (id: number) => {
+    try {
+      await deleteRepair(id);
+      router.refresh();
+    } catch (error) {
+      console.error("Eroare la ștergerea tichetului:", error);
+    }
+  };
 
   const columns = [
     { id: "New", title: t.statusNew, color: "border-t-blue-500 bg-blue-50/20" },
@@ -49,9 +85,8 @@ export default function RepairsPage() {
         dbTools={dbTools} 
         dbTechs={dbTechs} 
         dbParts={dbParts} 
-        onSubmit={createRepair} 
+        onSubmit={handleCreateRepair} 
       />
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {columns.map((col) => {
           const columnRepairs = getRepairsByStatus(col.id);
@@ -68,7 +103,7 @@ export default function RepairsPage() {
                 {columnRepairs.length === 0 ? (
                   <p className="text-xs text-slate-400 italic text-center py-4">{t.noRepairs}</p>
                 ) : (
-                  columnRepairs.map((repair: Repair) => (
+                  columnRepairs.map((repair: any) => (
                     <div key={repair.id} className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-3 hover:shadow-sm transition-shadow">
                       <div>
                         <div className="flex justify-between items-start">
@@ -86,7 +121,12 @@ export default function RepairsPage() {
 
                       <div className="text-[11px] text-slate-500 font-semibold space-y-0.5">
                         <p>🧑‍🔧 {repair.technician || "Nalocat"}</p>
-                        {repair.replaced_part && <p>📦 {repair.replaced_part}</p>}
+                        {/* MODIFICAT: Afișăm piesa și cantitatea folosită din baza de date */}
+                        {repair.replaced_part && (
+                          <p>
+                            📦 {repair.replaced_part} {repair.part_quantity ? `(x${repair.part_quantity})` : ""}
+                          </p>
+                        )}
                       </div>
 
                       <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2">
@@ -101,7 +141,7 @@ export default function RepairsPage() {
                           {/* Butonul de ștergere securizat prin GPO (Admin Only) */}
                           {isAdmin && (
                             <button
-                              onClick={() => deleteRepair(repair.id)}
+                              onClick={() => handleDeleteRepair(repair.id)}
                               className="px-2 py-1 bg-rose-50 border border-rose-200 hover:bg-rose-600 text-rose-600 hover:text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
                               title="Șterge definitiv acest tichet"
                             >
@@ -112,13 +152,28 @@ export default function RepairsPage() {
                         
                         <div className="flex gap-1">
                           {col.id === "New" && (
-                            <button onClick={() => updateRepairStatus(repair.id, "In Progress")} className="px-2 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600">➔</button>
+                            <button 
+                              onClick={() => handleUpdateStatus(repair.id, "In Progress")} 
+                              className="px-2 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600"
+                            >
+                              ➔
+                            </button>
                           )}
                           {col.id === "In Progress" && (
-                            <button onClick={() => updateRepairStatus(repair.id, "Testing")} className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700">➔</button>
+                            <button 
+                              onClick={() => handleUpdateStatus(repair.id, "Testing")} 
+                              className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"
+                            >
+                              ➔
+                            </button>
                           )}
                           {col.id === "Testing" && (
-                            <button onClick={() => updateRepairStatus(repair.id, "Closed")} className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">✓</button>
+                            <button 
+                              onClick={() => handleUpdateStatus(repair.id, "Closed")} 
+                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700"
+                            >
+                              ✓
+                            </button>
                           )}
                         </div>
                       </div>
