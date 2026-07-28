@@ -97,7 +97,7 @@ export default function RepairForm({ t, isSaving, dbTools, dbTechs, dbParts, onS
           {dbTechs.map((tech) => <option key={tech.id} value={tech.name || ""}>{tech.name}</option>)}
         </select>
 
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium">
+          <select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium">
           <option value="High">{t.priorityHigh}</option>
           <option value="Medium">{t.priorityMedium}</option>
           <option value="Low">{t.priorityLow}</option>
@@ -161,12 +161,16 @@ export default function RepairForm({ t, isSaving, dbTools, dbTechs, dbParts, onS
           )}
         </div>
 
-        <label className="flex flex-col text-xs text-slate-500 font-bold">{t.fileBefore}
-          <input type="file" accept="image/*" onChange={(e) => setFileBefore(e.target.files?.[0] || null)} className="mt-1 text-xs file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700" />
-        </label>
-
-        <label className="flex flex-col text-xs text-slate-500 font-bold">{t.fileAfter}
-          <input type="file" accept="image/*" onChange={(e) => setFileAfter(e.target.files?.[0] || null)} className="mt-1 text-xs file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700" />
+        {/* MODIFICAT: Input extins pe toată lățimea rămasă, configurat cu capture pentru a deschide direct camera foto */}
+        <label className="flex flex-col text-xs text-slate-500 font-bold md:col-span-2 cursor-pointer">
+          {t.fileBefore}
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" /* Deschide direct camera foto din spate pe dispozitivele mobile/tablete */
+            onChange={(e) => setFileBefore(e.target.files?.[0] || null)} 
+            className="mt-1 text-xs file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 cursor-pointer" 
+          />
         </label>
       </div>
 
@@ -181,3 +185,4 @@ export default function RepairForm({ t, isSaving, dbTools, dbTechs, dbParts, onS
     </form>
   );
 }
+
