@@ -14,11 +14,12 @@ export interface Repair {
   image_before_url?: string | null;
   image_after_url?: string | null;
   replaced_part?: string | null;
+  part_quantity?: number;
 }
 
 export interface DBTool { id: number; tool_number: string | null; }
 export interface DBTech { id: number; name: string | null; active: boolean | null; }
-export interface DBPart { id: number; endr_code: string | null; specification: string | null; }
+export interface DBPart { id: number; endr_code: string | null; specification: string | null; stock_quantity?: number; }
 
 export function useRepairsData(alertFields: string, alertSuccess: string) {
   const [repairs, setRepairs] = useState<Repair[]>([]);
@@ -35,7 +36,7 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
         supabase.from("repairs").select("*").order("id", { ascending: false }),
         supabase.from("tools").select("id, tool_number").order("tool_number", { ascending: true }),
         supabase.from("technicians").select("id, name, active").eq("active", true).order("name", { ascending: true }),
-        supabase.from("spare_parts").select("id, endr_code, specification").order("endr_code", { ascending: true })
+        supabase.from("spare_parts").select("id, endr_code, specification, stock_quantity").order("endr_code", { ascending: true })
       ]);
 
       if (repairsRes.data) setRepairs(repairsRes.data);
@@ -66,7 +67,7 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
       return null;
     }
   }
-
+  // MODIFICAT: Logica de creare consumă automat cantitatea din tabela spare_parts
   async function createRepair(data: any, files: { before: File | null; after: File | null }, resetForm: () => void) {
     if (!data.toolNumber || !data.failure) {
       alert(alertFields);
@@ -77,9 +78,34 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
       const imgBeforeUrl = files.before ? await uploadPhoto(files.before, "repairs_before") : null;
       const imgAfterUrl = files.after ? await uploadPhoto(files.after, "repairs_after") : null;
 
-      // Convertim cantitatea într-un număr întreg (implicit 0 dacă nu este completată)
       const qtyUsed = data.partQuantity ? parseInt(data.partQuantity, 10) : 0;
 
+      // 1. Verificăm dacă piesa selectată are stoc suficient înainte de a deschide tichetul
+      if (data.replacedPart && qtyUsed > 0) {
+        const { data: partData } = await supabase
+          .from("spare_parts")
+          .select("stock_quantity")
+          .eq("endr_code", data.replacedPart)
+          .maybeSingle();
+
+        const currentStock = partData?.stock_quantity || 0;
+
+        if (currentStock < qtyUsed) {
+          alert(`Eroare: Stoc insuficient! Stoc curent: ${currentStock} buc. Solicitat: ${qtyUsed} buc.`);
+          return; // Oprim execuția pentru a nu permite stoc negativ în depozit
+        }
+
+        // 2. Scădem cantitatea din tabela spare_parts în mod direct
+        const newStock = currentStock - qtyUsed;
+        const { error: stockError } = await supabase
+          .from("spare_parts")
+          .update({ stock_quantity: newStock })
+          .eq("endr_code", data.replacedPart);
+
+        if (stockError) throw stockError;
+      }
+
+      // 3. Inserăm tichetul de reparație cu piesa și cantitatea consumată salvate
       const { error } = await supabase.from("repairs").insert({
         tool_number: data.toolNumber,
         failure: data.failure.trim(),
@@ -89,10 +115,11 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
         image_before_url: imgBeforeUrl,
         image_after_url: imgAfterUrl,
         replaced_part: data.replacedPart || null,
-        part_quantity: qtyUsed // 1. Salvăm cantitatea de piese folosită în coloana din Supabase
+        part_quantity: qtyUsed
       });
 
       if (error) throw error;
+      
       alert(alertSuccess);
       resetForm();
       loadAllData();
@@ -103,12 +130,9 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
     }
   }
 
-
-  // CORECPȚIE: Ne asigurăm că statusurile respectă denumirile corecte ale coloanelor tale de Kanban
   async function updateRepairStatus(id: number, nextStatus: string) {
     try {
       let finalStatus = nextStatus;
-      // Prevenție pentru a evita mutarea în stări invalide ce pot bloca dashboard-ul
       if (nextStatus.toLowerCase() === "in repair") {
         finalStatus = "In Progress";
       }
@@ -135,6 +159,7 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
       ["Defecțiune Constatată:", repair.failure],
       ["Tehnician Responsabil:", repair.technician || "Nalocat"],
       ["Piesă înlocuită:", repair.replaced_part || "-"],
+      ["Cantitate Piese:", repair.part_quantity || 0],
       ["Prioritate:", repair.priority],
       ["Stadiu Curent:", repair.status]
     ];

@@ -8,7 +8,6 @@ interface PageProps {
 }
 
 export default function ToolPage({ searchParams }: PageProps) {
-  // 1. Despachetăm searchParams direct pe client
   const resolvedSearchParams = use(searchParams);
   const cleanToolNumber = (resolvedSearchParams.number || "").trim();
 
@@ -17,24 +16,51 @@ export default function ToolPage({ searchParams }: PageProps) {
   const [activeRepair, setActiveRepair] = useState<any>(null);
   const [parts, setParts] = useState<any[]>([]);
   const [repairHistory, setRepairHistory] = useState<any[]>([]);
+  const [isUpdatingStock, setIsUpdatingStock] = useState<number | null>(null);
 
-  // 2. Funcție proaspătă de citire live din Supabase
+  // Funcție live pentru încărcarea datelor fără cache
   async function loadLiveToolData() {
     if (!cleanToolNumber) return;
     try {
       setIsLoading(true);
       const searchPattern = `%${cleanToolNumber}%`;
 
-      // Executăm interogările direct la baza de date, fără intermediari sau cache de server
-      const [toolRes, repairActiveRes, partsRes, historyRes] = await Promise.all([
-        supabase.from("tools").select("*").ilike("tool_number", searchPattern).maybeSingle(),
-        supabase.from("repairs").select("status").ilike("tool_number", searchPattern).not("status", "ilike", "closed").order("id", { ascending: false }).maybeSingle(),
-        supabase.from("spare_parts").select("*").ilike("tool_number", searchPattern).order("endr_code", { ascending: true }),
-        supabase.from("repairs").select("*").ilike("tool_number", searchPattern).order("id", { ascending: false })
-      ]);
+      // 1. Preluăm datele de bază ale matriței
+      const toolRes = await supabase
+        .from("tools")
+        .select("*")
+        .ilike("tool_number", searchPattern)
+        .maybeSingle();
+
+      // 2. REPARAT: Căutăm orice tichet deschis eliminând spațiile goale ascunse
+      const repairActiveRes = await supabase
+        .from("repairs")
+        .select("status")
+        .ilike("tool_number", searchPattern)
+        .not("status", "ilike", "closed")
+        .order("id", { ascending: false });
+
+      const partsRes = await supabase
+        .from("spare_parts")
+        .select("*")
+        .ilike("tool_number", searchPattern)
+        .order("endr_code", { ascending: true });
+
+      const historyRes = await supabase
+        .from("repairs")
+        .select("*")
+        .ilike("tool_number", searchPattern)
+        .order("id", { ascending: false });
 
       setTool(toolRes.data);
-      setActiveRepair(repairActiveRes.data);
+      
+      // Dacă am găsit cel puțin un tichet deschis în listă, îl salvăm pe cel mai recent
+      if (repairActiveRes.data && repairActiveRes.data.length > 0) {
+        setActiveRepair(repairActiveRes.data[0]);
+      } else {
+        setActiveRepair(null);
+      }
+
       setParts(partsRes.data || []);
       setRepairHistory(historyRes.data || []);
     } catch (error) {
@@ -44,10 +70,35 @@ export default function ToolPage({ searchParams }: PageProps) {
     }
   }
 
-  // 3. Reîncărcăm datele automat la deschiderea paginii sau când se schimbă codul matriței
   useEffect(() => {
     loadLiveToolData();
   }, [cleanToolNumber]);
+
+  // FUNCȚIE NOUĂ: Modificarea stocului (+/-) direct în Supabase, vizibilă peste tot în aplicație
+  async function handleStockChange(partId: number, currentStock: number, delta: number) {
+    try {
+      setIsUpdatingStock(partId);
+      const newStock = Math.max(0, currentStock + delta); // Nu permitem stoc negativ
+
+      const { error } = await supabase
+        .from("spare_parts")
+        .update({ stock_quantity: newStock })
+        .eq("id", partId);
+
+      if (error) throw error;
+
+      // Actualizăm starea locală a pieselor instantaneu pe ecran
+      setParts(prevParts => 
+        prevParts.map(part => 
+          part.id === partId ? { ...part, stock_quantity: newStock } : part
+        )
+      );
+    } catch (error: any) {
+      alert("Eroare la actualizarea stocului: " + error.message);
+    } finally {
+      setIsUpdatingStock(null);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -63,8 +114,7 @@ export default function ToolPage({ searchParams }: PageProps) {
     dynamicStatus === "Available" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
     dynamicStatus?.toLowerCase() === "new" ? "bg-blue-50 text-blue-700 border-blue-200" :
     dynamicStatus?.toLowerCase() === "testing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
-    "bg-amber-50 text-amber-700 border-amber-200";
-
+    "bg-amber-50 text-amber-700 border-amber-200"; // In Progress
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
       {/* Header-ul paginii tehnice */}
@@ -98,7 +148,7 @@ export default function ToolPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {/* Tabel 1: Piese Asociate */}
+      {/* Tabel 1: Piese Asociate (Cu butoane de stoc noi) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-slate-50/50">
           <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Piese de Schimb Asociate (Kardex)</h2>
@@ -108,25 +158,54 @@ export default function ToolPage({ searchParams }: PageProps) {
             <thead>
               <tr className="bg-slate-50/70 border-b border-slate-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
                 <th className="py-3 px-6">Cod ENDR</th>
-                <th className="py-3 px-6">Specificație Tehnicła</th>
+                <th className="py-3 px-6">Specificație Tehnică</th>
                 <th className="py-3 px-6">Locație Raft</th>
-                <th className="py-3 px-6 text-center">Stoc</th>
+                <th className="py-3 px-6 text-center w-48">Gestiune Stoc Live</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
               {parts && parts.length > 0 ? (
-                parts.map((part: any) => (
-                  <tr key={part.id} className="hover:bg-slate-50/40 transition-colors">
-                    <td className="py-3.5 px-6 font-mono font-bold text-indigo-600">{part.endr_code}</td>
-                    <td className="py-3.5 px-6 font-medium text-slate-800">{part.specification || "-"}</td>
-                    <td className="py-3.5 px-6 font-mono text-slate-500">{part.kardex_shelf ? `Raft ${part.kardex_shelf}` : "-"}</td>
-                    <td className="py-3.5 px-6 text-center font-bold">
-                      <span className={`px-2 py-0.5 rounded text-xs ${(part.stock_quantity || 0) > 0 ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700"}`}>
-                        {part.stock_quantity ?? 0} buc
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                parts.map((part: any) => {
+                  const currentQty = part.stock_quantity || 0;
+                  const isPending = isUpdatingStock === part.id;
+
+                  return (
+                    <tr key={part.id} className="hover:bg-slate-50/40 transition-colors">
+                      <td className="py-3.5 px-6 font-mono font-bold text-indigo-600">{part.endr_code}</td>
+                      <td className="py-3.5 px-6 font-medium text-slate-800">{part.specification || "-"}</td>
+                      <td className="py-3.5 px-6 font-mono text-slate-500">{part.kardex_shelf ? `Raft ${part.kardex_shelf}` : "-"}</td>
+                      
+                      {/* MODIFICAT: Celulă nouă pentru controlul stocului cu butoane premium + / - */}
+                      <td className="py-3.5 px-6">
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => handleStockChange(part.id, currentQty, -1)}
+                            disabled={isPending || currentQty <= 0}
+                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 shadow-sm disabled:opacity-40 disabled:hover:bg-slate-100 disabled:hover:text-slate-600"
+                            title="Scade o piesă din stoc"
+                          >
+                            -
+                          </button>
+                          
+                          <span className={`min-w-[60px] text-center font-mono font-black text-xs px-2 py-1 rounded ${
+                            currentQty > 0 ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700 animate-pulse"
+                          }`}>
+                            {isPending ? "..." : `${currentQty} buc`}
+                          </span>
+
+                          <button
+                            onClick={() => handleStockChange(part.id, currentQty, 1)}
+                            disabled={isPending}
+                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 shadow-sm disabled:opacity-40"
+                            title="Adaugă o piesă în stoc"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={4} className="py-8 text-center text-slate-400 italic">Nu există piese asociate.</td>

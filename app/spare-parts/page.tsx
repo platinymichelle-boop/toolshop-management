@@ -12,61 +12,94 @@ interface SparePart {
   kardex_shelf: number | null;
   stock_type: string | null;
   st_ns: string | null;
+  stock_quantity?: number;
 }
 
 export default function SparePartsPage() {
   const [parts, setParts] = useState<SparePart[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpdatingStock, setIsUpdatingStock] = useState<number | null>(null);
   
-  // Paginare simplă client-side pentru performanță
+  // LOGICĂ NOUĂ: Gestiune Paginare direct pe Server
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0); // Păstrează numărul total real (4.843)
   const itemsPerPage = 50;
 
-  useEffect(() => {
-    async function loadSpareParts() {
-      try {
-        setIsLoading(true);
-        // Preluăm piesele ordonate după cod
-        const { data, error } = await supabase
-          .from("spare_parts")
-          .select("*")
-          .order("id", { ascending: true });
+  // Funcție optimizată care aduce doar intervalul de 50 de piese cerut și numără restul
+  async function loadSpareParts() {
+    try {
+      setIsLoading(true);
+      
+      // Calculăm rândurile exacte de pornire și oprire pentru baza de date
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
 
-        if (error) throw error;
-        if (data) setParts(data);
-      } catch (error: any) {
-        console.error("Eroare la încărcarea pieselor de schimb:", error.message);
-      } finally {
-        setIsLoading(false);
+      // Construim interogarea de bază
+      let query = supabase
+        .from("spare_parts")
+        .select("*", { count: "exact" }) // { count: "exact" } ne dă numărul total din spate (4.843)
+        .order("id", { ascending: true })
+        .range(from, to); // Îi cerem serverului doar feliile de 50 de rânduri
+
+      // Dacă utilizatorul caută ceva, lăsăm Supabase să filtreze direct pe server în loc de JS client
+      if (searchTerm.trim() !== "") {
+        const cleanTerm = `%${searchTerm.trim()}%`;
+        query = query.or(`specification.ilike.${cleanTerm},endr_code.ilike.${cleanTerm},tool_number.ilike.${cleanTerm}`);
       }
+
+      const { data, count, error } = await query;
+
+      if (error) throw error;
+      
+      if (data) setParts(data);
+      if (count !== null) setTotalCount(count); // Salvăm numărul total real din Supabase
+    } catch (error: any) {
+      console.error("Eroare la încărcarea pieselor de schimb:", error.message);
+    } finally {
+      setIsLoading(false);
     }
+  }
 
+  // Declanșăm încărcarea la schimbarea paginii sau la finalizarea căutării
+  useEffect(() => {
     loadSpareParts();
-  }, []);
+  }, [currentPage, searchTerm]);
 
-  // Resetăm pagina curentă la 1 când utilizatorul caută ceva
+  // Schimbăm căutarea și resetăm pagina la 1
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
     setCurrentPage(1);
   };
 
-  // Căutare dinamică în textul specificației, codului sau modelului de sculă
-  const filteredParts = parts.filter((part) => {
-    const term = searchTerm.toLowerCase();
-    return (
-      part.specification?.toLowerCase().includes(term) ||
-      part.endr_code?.toLowerCase().includes(term) ||
-      part.tool_number?.toLowerCase().includes(term)
-    );
-  });
+  // GESTIUNE STOC LIVE (Rămâne neschimbată și complet funcțională)
+  async function handleStockChange(partId: number, currentStock: number, delta: number) {
+    try {
+      setIsUpdatingStock(partId);
+      const newStock = Math.max(0, currentStock + delta);
 
-  // Calcul paginare
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredParts.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredParts.length / itemsPerPage);
+      const { error } = await supabase
+        .from("spare_parts")
+        .update({ stock_quantity: newStock })
+        .eq("id", partId);
 
+      if (error) throw error;
+
+      setParts(prevParts => 
+        prevParts.map(part => 
+          part.id === partId ? { ...part, stock_quantity: newStock } : part
+        )
+      );
+    } catch (error: any) {
+      alert("Eroare la actualizarea stocului: " + error.message);
+    } finally {
+      setIsUpdatingStock(null);
+    }
+  }
+
+  // Variabile de calcul simplificate (deoarece intervalul vine calculat direct de pe server)
+  const indexOfFirstItem = (currentPage - 1) * itemsPerPage;
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
   return (
     <div className="space-y-8">
       {/* Antet Pagina */}
@@ -75,7 +108,7 @@ export default function SparePartsPage() {
           Management Piese de Schimb
         </h1>
         <p className="text-gray-500 mt-1">
-          Afișarea celor {parts.length.toLocaleString("ro-RO")} componente stocate în tabela ta din Supabase.
+          Afișarea celor {totalCount.toLocaleString("ro-RO")} componente stocate în tabela ta din Supabase.
         </p>
       </div>
 
@@ -101,45 +134,84 @@ export default function SparePartsPage() {
                 <th className="py-4 px-6">Compatibilitate (Tool №)</th>
                 <th className="py-4 px-6">Locație (Kardex)</th>
                 <th className="py-4 px-6">Tip Stoc</th>
+                <th className="py-4 px-6 text-center w-48">Stoc Disponibil</th>
                 <th className="py-4 px-6">Status / Note</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm text-slate-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-400">
-                    Se încarcă baza de date cu piese (4.843 repere)...
+                  <td colSpan={7} className="py-8 text-center text-gray-400">
+                    Se încarcă intervalul de piese din Supabase...
                   </td>
                 </tr>
-              ) : currentItems.length > 0 ? (
-                currentItems.map((part) => (
-                  <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-4 px-6 font-mono font-semibold text-xs text-blue-600">
-                      {part.endr_code || "FĂRĂ COD"}
-                    </td>
-                    <td className="py-4 px-6 font-medium text-slate-900 max-w-xs truncate">
-                      {part.specification || "-"}
-                    </td>
-                    <td className="py-4 px-6 text-xs text-gray-600 font-mono">
-                      {part.tool_number || "Universală"}
-                    </td>
-                    <td className="py-4 px-6 font-mono text-xs text-gray-500">
-                      {part.kardex_shelf !== null ? `Raft ${part.kardex_shelf}` : "-"}
-                    </td>
-                    <td className="py-4 px-6 text-xs">
-                      <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-medium">
-                        {part.stock_type || "Nespecificat"}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-xs text-gray-500">
-                      {part.st_ns || "-"}
-                    </td>
-                  </tr>
-                ))
+              ) : parts.length > 0 ? (
+                /* MODIFICAT: Mapăm direct matricea parts returnată curat de server */
+                parts.map((part: any) => {
+                  const currentQty = part.stock_quantity || 0;
+                  const isPending = isUpdatingStock === part.id;
+
+                  return (
+                    <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-6 font-mono font-semibold text-xs text-blue-600">
+                        {part.endr_code || "FĂRĂ COD"}
+                      </td>
+                      <td className="py-4 px-6 font-medium text-slate-900 max-w-xs truncate" title={part.specification || ""}>
+                        {part.specification || "-"}
+                      </td>
+                      <td className="py-4 px-6 text-xs text-gray-600 font-mono">
+                        {part.tool_number || "Universală"}
+                      </td>
+                      <td className="py-4 px-6 font-mono text-xs text-gray-500">
+                        {part.kardex_shelf !== null ? `Raft ${part.kardex_shelf}` : "-"}
+                      </td>
+                      <td className="py-4 px-6 text-xs">
+                        <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-medium">
+                          {part.stock_type || "Nespecificat"}
+                        </span>
+                      </td>
+                      
+                      {/* Celulă interactivă pentru controlul stocului live */}
+                      <td className="py-4 px-6">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStockChange(part.id, currentQty, -1)}
+                            disabled={isPending || currentQty <= 0}
+                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 shadow-sm disabled:opacity-40"
+                            title="Scade o piesă din stoc"
+                          >
+                            -
+                          </button>
+                          
+                          <span className={`min-w-[65px] text-center font-mono font-black text-xs px-2 py-1 rounded ${
+                            currentQty > 0 ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700 animate-pulse"
+                          }`}>
+                            {isPending ? "..." : `${currentQty} buc`}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleStockChange(part.id, currentQty, 1)}
+                            disabled={isPending}
+                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 shadow-sm disabled:opacity-40"
+                            title="Adaugă o piesă în stoc"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </td>
+
+                      <td className="py-4 px-6 text-xs text-gray-500">
+                        {part.st_ns || "-"}
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-400">
-                    Nicio piesă de schimb găsită pentru criteriile selectate.
+                  <td colSpan={7} className="py-8 text-center text-gray-400">
+                    Nicio piesă de schimb găsită în acest interval sau conform căutării.
                   </td>
                 </tr>
               )}
@@ -147,27 +219,30 @@ export default function SparePartsPage() {
           </table>
         </div>
 
-        {/* Control Paginare */}
+        {/* Control Paginare de Server */}
         {!isLoading && totalPages > 1 && (
           <div className="bg-slate-50 border-t border-gray-100 px-6 py-4 flex items-center justify-between">
             <span className="text-xs text-gray-500">
-              Se afișează reperele {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredParts.length)} din {filteredParts.length} filtrate
+              {/* MODIFICAT: Calcul de interval corelat direct cu totalCount global din Supabase */}
+              Se afișează reperele {indexOfFirstItem + 1} - {Math.min(indexOfFirstItem + itemsPerPage, totalCount)} din {totalCount} totale
             </span>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white"
+                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
               >
                 Anterior
               </button>
-              <span className="text-xs font-medium self-center px-2">
+              <span className="text-xs font-bold self-center px-2 text-slate-700">
                 Pagina {currentPage} din {totalPages}
               </span>
               <button
+                type="button"
                 onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white"
+                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
               >
                 Următor
               </button>
