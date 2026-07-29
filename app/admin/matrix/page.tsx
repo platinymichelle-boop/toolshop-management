@@ -1,6 +1,8 @@
 "use client";
 
 import { useAccessMatrix } from "@/hooks/useAccessMatrix";
+// Importăm componenta butonului pe care am creat-o anterior
+import PushRegister from "@/components/PushRegister";
 
 export default function AccessMatrixPage() {
   const { users, isLoading, handlePermissionChange, handleChangeRole, deleteUser } = useAccessMatrix();
@@ -20,7 +22,13 @@ export default function AccessMatrixPage() {
             Drepturile sunt setate implicit pe <span className="text-rose-400 font-bold uppercase">false</span>. Utilizați comutatoarele binare pentru a acorda sau revoca accesul tehnicienilor.
           </p>
         </div>
-        <span className="text-3xl p-3.5 bg-slate-800/80 border border-slate-700 rounded-2xl shadow-inner relative z-10">🛡️</span>
+        
+        {/* Zona din dreapta care grupează scutul administrativ și noul buton push mobil */}
+        <div className="flex items-center space-x-4 relative z-10">
+          <PushRegister />
+          <span className="text-3xl p-3.5 bg-slate-800/80 border border-slate-700 rounded-2xl shadow-inner">🛡️</span>
+        </div>
+        
         <div className="absolute -right-10 -bottom-10 opacity-5 text-[14rem] font-black pointer-events-none select-none">🔐</div>
       </div>
 
@@ -44,7 +52,7 @@ export default function AccessMatrixPage() {
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 italic font-medium animate-pulse">
-                    Se intergolează drepturile și se generează matricea binară...
+                    Se interogelează drepturile și se generează matricea binară...
                   </td>
                 </tr>
               ) : users.length > 0 ? (
@@ -128,23 +136,24 @@ export default function AccessMatrixPage() {
                         </label>
                       </td>
 
-                      {/* Buton Ștergere Utilizator (vizibil la hover) */}
+                      {/* Buton Ștergere Utilizator */}
                       <td className="py-4 px-6 text-center">
-                        <button
-                          onClick={() => deleteUser(user.id, user.full_name || "")}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
-                          title="Elimină utilizatorul definitiv"
-                        >
-                          🗑️
-                        </button>
+                      <button
+                        onClick={() => deleteUser(user.id, user.full_name || "Utilizator")}
+                        className="text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 transition-all"
+                        title="Șterge utilizator"
+                      >
+                        🗑️
+                      </button>
+
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">
-                    Niciun utilizator înregistrat în ToolShop Pro OS.
+                  <td colSpan={8} className="py-12 text-center text-slate-400 italic">
+                    Nu s-au găsit utilizatori înregistrați.
                   </td>
                 </tr>
               )}
@@ -154,4 +163,5 @@ export default function AccessMatrixPage() {
       </div>
     </div>
   );
+
 }
