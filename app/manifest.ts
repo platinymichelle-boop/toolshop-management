@@ -6,6 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'ToolShop Pro',
     description: 'Sistem de management operational pentru service',
     start_url: '/',
+    scope: '/', // ADAUGAT: Blochează aplicația să iasă în browserul normal
     display: 'standalone',
     background_color: '#0f172a',
     theme_color: '#0f172a',
