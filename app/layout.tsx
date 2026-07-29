@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ToolShop Pro",
   description: "Sistem de management operational pentru service",
-  manifest: "/manifest.json", // Declarăm manifestul PWA pentru telefoane
+  // Next.js va injecta automat ruta manifestului din app/manifest.ts
 };
 
 export default function RootLayout({
@@ -37,7 +37,6 @@ export default function RootLayout({
         <meta name="theme-color" content="#0f172a" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="h-screen w-screen flex bg-gray-50 text-slate-900 overflow-hidden">
         {/* Containerul global pentru ferestrele pop-up de interfață */}

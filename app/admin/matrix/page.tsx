@@ -1,7 +1,6 @@
 "use client";
 
 import { useAccessMatrix } from "@/hooks/useAccessMatrix";
-// Importăm componenta butonului pe care am creat-o anterior
 import PushRegister from "@/components/PushRegister";
 
 export default function AccessMatrixPage() {
@@ -23,7 +22,7 @@ export default function AccessMatrixPage() {
           </p>
         </div>
         
-        {/* Zona din dreapta care grupează scutul administrativ și noul buton push mobil */}
+        {/* Zona din dreapta care grupează scutul administrativ și butonul push mobil cu dublă comandă */}
         <div className="flex items-center space-x-4 relative z-10">
           <PushRegister />
           <span className="text-3xl p-3.5 bg-slate-800/80 border border-slate-700 rounded-2xl shadow-inner">🛡️</span>
@@ -61,15 +60,10 @@ export default function AccessMatrixPage() {
 
                   return (
                     <tr key={user.id} className="hover:bg-indigo-50/20 transition-all group">
-                      {/* Nume complet */}
                       <td className="py-4 px-6 font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
                         {user.full_name || "Nume Nesetat"}
                       </td>
-                      
-                      {/* Username Email */}
                       <td className="py-4 px-6 text-slate-500 font-mono text-xs">{user.username}</td>
-                      
-                      {/* Schimbare Rol */}
                       <td className="py-4 px-6 text-center">
                         <button
                           onClick={() => handleChangeRole(user.id, user.role)}
@@ -83,7 +77,6 @@ export default function AccessMatrixPage() {
                         </button>
                       </td>
                       
-                      {/* Toggles GPO standardizate */}
                       <td className="py-4 px-6 text-center">
                         <label className="inline-flex items-center justify-center relative cursor-pointer select-none">
                           <input
@@ -136,16 +129,14 @@ export default function AccessMatrixPage() {
                         </label>
                       </td>
 
-                      {/* Buton Ștergere Utilizator */}
                       <td className="py-4 px-6 text-center">
-                      <button
-                        onClick={() => deleteUser(user.id, user.full_name || "Utilizator")}
-                        className="text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 transition-all"
-                        title="Șterge utilizator"
-                      >
-                        🗑️
-                      </button>
-
+                        <button
+                          onClick={() => deleteUser(user.id, user.full_name || "Utilizator")}
+                          className="text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 transition-all"
+                          title="Șterge utilizator"
+                        >
+                          🗑️
+                        </button>
                       </td>
                     </tr>
                   );
@@ -163,5 +154,4 @@ export default function AccessMatrixPage() {
       </div>
     </div>
   );
-
 }

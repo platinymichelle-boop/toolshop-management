@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
 
-// !!! ÎNLOCUIEȘTE TEXTUL DE MAI JOS CU CHEIA TA PUBLICĂ GENERATĂ ÎN TERMINAL !!!
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 
 export default function PushRegister() {
@@ -12,73 +11,86 @@ export default function PushRegister() {
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
-    // Verificăm dacă browserul/dispozitivul suportă Service Workers și Push
     if ("serviceWorker" in navigator && "PushManager" in window) {
       setIsSupported(true);
 
-      // Înregistrăm Service Worker-ul din folderul public
       navigator.serviceWorker
         .register("/sw.js")
-        .then((reg) => {
-          console.log("Service Worker înregistrat cu succes în scopul:", reg.scope);
-          // Verificăm dacă utilizatorul este deja abonat la notificări pe acest telefon
-          return reg.pushManager.getSubscription();
-        })
+        .then((reg) => reg.pushManager.getSubscription())
         .then((sub) => {
-          if (sub) {
-            setIsSubscribed(true);
-          }
+          if (sub) setIsSubscribed(true);
         })
-        .catch((err) => console.error("Eroare la inițializarea Service Worker:", err));
+        .catch((err) => console.error("Eroare inițializare SW:", err));
     }
   }, []);
 
+  // COMANDA 1: ACTIVARE NOTIFICĂRI
   const handleSubscribe = async () => {
-    const loadingToast = toast.loading("Se activează notificările pe telefon...");
+    const loadingToast = toast.loading("Se activează notificările...");
     try {
-      // 1. Solicităm permisiunea nativă a telefonului mobil
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        throw new Error("Permisiunea pentru notificări a fost respinsă de utilizator.");
+        throw new Error("Permisiunea pentru notificări a fost respinsă.");
       }
 
-      // 2. Generăm token-ul unic (adresa push a telefonului)
       const reg = await navigator.serviceWorker.ready;
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
 
-      // 3. Preluăm utilizatorul curent logat în aplicație
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error("Trebuie să fii autentificat pentru a înregistra telefonul.");
-      }
+      if (!user) throw new Error("Trebuie să fii autentificat.");
 
-      // 4. Salvăm sau actualizăm adresa telefonului în noua tabelă din Supabase
       const { error: dbError } = await supabase
         .from("user_push_tokens")
-        .upsert(
-          {
-            user_id: user.id,
-            token_data: JSON.stringify(subscription),
-          },
-          { onConflict: "user_id" }
-        );
+        .upsert({ user_id: user.id, token_data: JSON.stringify(subscription) }, { onConflict: "user_id" });
 
       if (dbError) throw dbError;
 
       setIsSubscribed(true);
       toast.dismiss(loadingToast);
-      toast.success("Telefon înregistrat! Vei primi alerte pe ecranul blocat. 📲");
+      toast.success("Notificări activate cu succes! 📲");
     } catch (error: any) {
-      console.error("Eroare abonare push:", error);
+      console.error(error);
       toast.dismiss(loadingToast);
-      toast.error(error.message || "Eroare la activarea alertelor mobile.");
+      toast.error(error.message || "Eroare la activare.");
     }
   };
 
-  // Funcție tehnică utilitară necesară pentru decodarea cheii publice securizate
+  // COMANDA 2: DEZACTIVARE NOTIFICĂRI
+  const handleUnsubscribe = async () => {
+    const loadingToast = toast.loading("Se dezactivează notificările...");
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.getSubscription();
+      
+      // 1. Eliminăm abonamentul din motorul browserului de pe telefon
+      if (subscription) {
+        await subscription.unsubscribe();
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Trebuie să fii autentificat.");
+
+      // 2. Ștergem rândul cu token-ul din tabela Supabase
+      const { error: dbError } = await supabase
+        .from("user_push_tokens")
+        .delete()
+        .eq("user_id", user.id);
+
+      if (dbError) throw dbError;
+
+      setIsSubscribed(false);
+      toast.dismiss(loadingToast);
+      toast.success("Notificări mobile dezactivate. 🔕");
+    } catch (error: any) {
+      console.error(error);
+      toast.dismiss(loadingToast);
+      toast.error(error.message || "Eroare la dezactivare.");
+    }
+  };
+
   function urlBase64ToUint8Array(base64String: string) {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/\-/g, "+").replace(/_/g, "/");
@@ -90,20 +102,18 @@ export default function PushRegister() {
     return outputArray;
   }
 
-  // Dacă telefonul sau PC-ul curent nu are un browser capabil, ascundem complet butonul
   if (!isSupported) return null;
 
   return (
     <button
-      onClick={handleSubscribe}
-      className={`px-4 py-2 rounded shadow text-sm font-medium transition duration-200 ${
+      onClick={isSubscribed ? handleUnsubscribe : handleSubscribe}
+      className={`px-4 py-2 rounded-xl shadow text-sm font-bold uppercase tracking-wider transition-all duration-200 active:scale-95 border ${
         isSubscribed
-          ? "bg-emerald-600 text-white cursor-default"
-          : "bg-slate-900 text-white hover:bg-slate-800 active:scale-95"
+          ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+          : "bg-indigo-600 border-indigo-700 text-white hover:bg-indigo-700"
       }`}
-      disabled={isSubscribed}
     >
-      {isSubscribed ? "📲 Notificări Mobile Active" : "🔔 Activează Alerte pe Telefon"}
+      {isSubscribed ? "🔕 Dezactivează Alerte" : "🔔 Activează Alerte"}
     </button>
   );
 }
