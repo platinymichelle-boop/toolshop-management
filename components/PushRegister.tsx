@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
 
 // !!! ÎNLOCUIEȘTE TEXTUL DE MAI JOS CU CHEIA TA PUBLICĂ GENERATĂ ÎN TERMINAL !!!
-const VAPID_PUBLIC_KEY = "BD1c1nt9ppUG71T9vmfze2UCp4CcEmjrMIJKbg9a0-4yNkjpFbdX3PB2m8qF8QMCmXG9L5li8Nqfm29UZL2Erpg";
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 
 export default function PushRegister() {
   const [isSupported, setIsSupported] = useState(false);
