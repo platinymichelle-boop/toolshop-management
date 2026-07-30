@@ -4,13 +4,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
-
 export default function PushRegister() {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
+    // Verificăm dacă browserul curent (mai ales pe mobil) suportă tehnic notificările push
     if ("serviceWorker" in navigator && "PushManager" in window) {
       setIsSupported(true);
 
@@ -18,33 +17,54 @@ export default function PushRegister() {
         .register("/sw.js")
         .then((reg) => reg.pushManager.getSubscription())
         .then((sub) => {
-          if (sub) setIsSubscribed(true);
+          if (sub) {
+            // Dacă există deja un abonament valid în browser, îl setăm ca activ
+            setIsSubscribed(true);
+          }
         })
         .catch((err) => console.error("Eroare inițializare SW:", err));
     }
   }, []);
 
-  // COMANDA 1: ACTIVARE NOTIFICĂRI
   const handleSubscribe = async () => {
     const loadingToast = toast.loading("Se activează notificările...");
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        throw new Error("Permisiunea pentru notificări a fost respinsă.");
+      // 1. Verificare cheie VAPID
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidKey) {
+        throw new Error("Lipsește cheia publică VAPID din setările serverului (.env).");
       }
 
+      // 2. Cerere permisiune nativă
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        throw new Error("Permisiunea a fost respinsă. Activează notificările din setările browserului/telefonului.");
+      }
+
+      // 3. Așteptăm ca Service Worker să fie gata complet
       const reg = await navigator.serviceWorker.ready;
+      
+      // 4. Înregistrare în Push Server-ul Google/Apple
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
 
+      // 5. Verificare autentificare utilizator în depozit
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Trebuie să fii autentificat.");
+      if (!user) throw new Error("Trebuie să fii autentificat în aplicație pentru a primi alerte.");
 
+      // 6. Salvare securizată în Supabase
       const { error: dbError } = await supabase
         .from("user_push_tokens")
-        .upsert({ user_id: user.id, token_data: JSON.stringify(subscription) }, { onConflict: "user_id" });
+        .upsert(
+          { 
+            user_id: user.id, 
+            token_data: JSON.stringify(subscription),
+            updated_at: new Date().toISOString() 
+          }, 
+          { onConflict: "user_id" }
+        );
 
       if (dbError) throw dbError;
 
@@ -54,32 +74,28 @@ export default function PushRegister() {
     } catch (error: any) {
       console.error(error);
       toast.dismiss(loadingToast);
-      toast.error(error.message || "Eroare la activare.");
+      // Afișăm eroarea exactă direct în interfață ca să o poți citi pe telefon
+      toast.error(error.message || "Eroare la activarea alertelor.");
     }
   };
 
-  // COMANDA 2: DEZACTIVARE NOTIFICĂRI
   const handleUnsubscribe = async () => {
     const loadingToast = toast.loading("Se dezactivează notificările...");
     try {
       const reg = await navigator.serviceWorker.ready;
       const subscription = await reg.pushManager.getSubscription();
       
-      // 1. Eliminăm abonamentul din motorul browserului de pe telefon
       if (subscription) {
         await subscription.unsubscribe();
       }
 
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Trebuie să fii autentificat.");
-
-      // 2. Ștergem rândul cu token-ul din tabela Supabase
-      const { error: dbError } = await supabase
-        .from("user_push_tokens")
-        .delete()
-        .eq("user_id", user.id);
-
-      if (dbError) throw dbError;
+      if (user) {
+        await supabase
+          .from("user_push_tokens")
+          .delete()
+          .eq("user_id", user.id);
+      }
 
       setIsSubscribed(false);
       toast.dismiss(loadingToast);
@@ -102,7 +118,14 @@ export default function PushRegister() {
     return outputArray;
   }
 
-  if (!isSupported) return null;
+  // Dacă telefonul sau modul de navigare (ex: Incognito) nu suportă Web Push, butonul nu apare deloc
+  if (!isSupported) {
+    return (
+      <div className="text-xs text-amber-500 bg-amber-50 p-2 rounded-lg border border-amber-200">
+        ⚠️ Acest dispozitiv sau browser nu suportă notificări Push mobile (Verifică dacă ești pe HTTPS sau dacă ai adăugat aplicația pe ecranul principal dacă folosești iPhone).
+      </div>
+    );
+  }
 
   return (
     <button
