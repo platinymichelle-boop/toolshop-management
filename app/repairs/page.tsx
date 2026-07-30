@@ -28,30 +28,17 @@ export default function RepairsPage() {
   // STĂRI PREVIEW IMAGINI
   const [previewImages, setPreviewImages] = useState<{ before: string | null; after: string | null } | null>(null);
 
-   const handleCreateRepair = async (formData: any, files: any, resetForm: () => void) => {
+    const handleCreateRepair = async (formData: any, files: any, resetForm: () => void) => {
     try {
-      // 1. Salvăm tichetul în Supabase ca și până acum
+      // 1. Salvăm tichetul în Supabase (notificarea push va pleca acum automat din interiorul acestei funcții)
       await createRepair(formData, files, resetForm);
       
-      // 2. Declanșăm notificarea push pe toate telefoanele abonate
-      // Folosim un apel asincron în fundal (fără await, ca să nu blocheze interfața dacă internetul e lent)
-      fetch("/api/send-push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "🛠️ Tichet Nou deschis în Service!",
-          body: `A fost raportată o defecțiune la Matrița/Unealta nr. ${formData.tool_number || "nespecificat"}.`,
-          url: "/repairs" // Pagina pe care se va deschide când tehnicianul dă click pe telefon
-        })
-      }).catch(err => console.error("Eroare trimitere push din pagină:", err));
-
-      // 3. Reîmprospătăm datele pe ecran
+      // 2. Reîmprospătăm datele pe ecran
       router.refresh(); 
     } catch (error) {
       console.error("Eroare la crearea tichetului:", error);
     }
   };
-
 
     const handleUpdateStatus = async (id: number, newStatus: string) => {
     try {

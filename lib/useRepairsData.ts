@@ -67,7 +67,8 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
       return null;
     }
   }
-  // MODIFICAT: Logica de creare consumă automat cantitatea din tabela spare_parts
+
+  // MODIFICAT: Trimite notificare push pe mobil la deschiderea unui tichet nou
   async function createRepair(data: any, files: { before: File | null; after: File | null }, resetForm: () => void) {
     if (!data.toolNumber || !data.failure) {
       alert(alertFields);
@@ -92,7 +93,7 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
 
         if (currentStock < qtyUsed) {
           alert(`Eroare: Stoc insuficient! Stoc curent: ${currentStock} buc. Solicitat: ${qtyUsed} buc.`);
-          return; // Oprim execuția pentru a nu permite stoc negativ în depozit
+          return;
         }
 
         // 2. Scădem cantitatea din tabela spare_parts în mod direct
@@ -120,6 +121,17 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
 
       if (error) throw error;
       
+      // 4. TRIGGER WEB PUSH CĂTRE BACKEND (Înainte de închiderea/resetarea formularului)
+      fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "🛠️ Tichet Nou în Service!",
+          body: `Defecțiune la Matrița/Unealta nr. ${data.toolNumber}. Prioritate: ${data.priority || "Normală"}.`,
+          url: "/repairs"
+        })
+      }).catch(err => console.error("Eroare trimitere push la creare tichet:", err));
+
       alert(alertSuccess);
       resetForm();
       loadAllData();
@@ -130,6 +142,7 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
     }
   }
 
+  // MODIFICAT: Trimite notificare push pe mobil când se schimbă statusul reparației
   async function updateRepairStatus(id: number, nextStatus: string) {
     try {
       let finalStatus = nextStatus;
@@ -139,6 +152,18 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
 
       const { error } = await supabase.from("repairs").update({ status: finalStatus }).eq("id", id);
       if (error) throw error;
+
+      // TRIGGER WEB PUSH LA MODIFICARE STATUS
+      fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "🔄 Status Matriță Modificat",
+          body: `Tichetul #${id} a fost trecut în stadiul: "${finalStatus}".`,
+          url: "/repairs"
+        })
+      }).catch(err => console.error("Eroare trimitere push la update status:", err));
+
       loadAllData();
     } catch (error: any) {
       alert("Eroare update status: " + error.message);
