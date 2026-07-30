@@ -50,9 +50,13 @@ export default function PushRegister() {
         applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
 
-      // 5. Verificare autentificare utilizator în depozit
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Trebuie să fii autentificat în aplicație pentru a primi alerte.");
+            // 5. Verificare autentificare utilizator în depozit
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+
+      if (!user) {
+        throw new Error("Trebuie să fii autentificat în aplicație pentru a primi alerte.");
+      }
 
       // 6. Salvare securizată în Supabase
       const { error: dbError } = await supabase

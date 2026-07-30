@@ -5,7 +5,7 @@ import { useSidebarAuth } from "@/lib/useSidebarAuth";
 import { useLanguage } from "@/context/LanguageContext";
 import SidebarMenu from "./SidebarMenu";
 import LanguageToggle from "./LanguageToggle";
-
+import Link from "next/link"; // Adăugat pentru navigare Next.js
 
 export default function Sidebar() {
   const { permissions, userEmail, isLoading, pathname, handleLogout } = useSidebarAuth();
@@ -20,6 +20,9 @@ export default function Sidebar() {
     if (!window.confirm(t.logoutConfirm)) return;
     await handleLogout();
   };
+
+  // Verificăm dacă ruta curentă este cea de breakdown pentru a-i pune stilul de "Activ"
+  const isBreakdownActive = pathname === "/breakdown";
 
   return (
     <>
@@ -57,14 +60,30 @@ export default function Sidebar() {
           </div>
 
           {/* Navigație dinamică */}
-          <nav className="p-4 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
+          <nav className="p-4 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar space-y-2">
             {isLoading ? (
               <div className="space-y-3 animate-pulse">
                 <div className="h-9 bg-slate-800 rounded-xl"></div>
                 <div className="h-9 bg-slate-800 rounded-xl"></div>
               </div>
             ) : (
-              <SidebarMenu permissions={permissions} pathname={pathname} />
+              <>
+                {/* Meniul tău dinamic existent */}
+                <SidebarMenu permissions={permissions} pathname={pathname} />
+
+                {/* BUTONUL NOU: Adăugat manual direct în structură pentru a apărea pe ecran */}
+                <Link
+                  href="/breakdown"
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold tracking-wide uppercase transition-all border ${
+                    isBreakdownActive
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-400 shadow-inner"
+                      : "border-transparent text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                  }`}
+                >
+                  <span className="text-base">⚠️</span>
+                  <span>Breakdown Tracker</span>
+                </Link>
+              </>
             )}
           </nav>
         </div>
