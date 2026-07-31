@@ -70,6 +70,22 @@ export default function SidebarMenu({ permissions, pathname }: SidebarMenuProps)
         </Link>
       </li>
 
+      {/* ⚠️ ADĂUGAT: Înregistrare Avarie (Vizibil pentru toți operatorii/tehnicienii) */}
+      <li>
+        <Link href="/breakdown" className={linkClass("/breakdown")}>
+          ⚠️ Breakdown Tracker
+        </Link>
+      </li>
+
+      {/* 📊 ADĂUGAT: Analytics & MTTR (Vizibil doar pentru management / admin) */}
+      {showReports && (
+        <li>
+          <Link href="/breakdown/dashboard" className={linkClass("/breakdown/dashboard")}>
+            📊 Breakdown Analytics
+          </Link>
+        </li>
+      )}
+
       {showReports && (
         <li>
           <Link href="/reports" className={linkClass("/reports")}>
