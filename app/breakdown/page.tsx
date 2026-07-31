@@ -4,20 +4,17 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
 
-// Listă fixă cu presele și liniile din fabrică (modifică denumirile după cum aveți pe teren)
 const HARDCODED_PRESSES = [
-  "PRS-103",
-  "PRS-104",
-  "PRS-105",
-  "PRS-106",
-  "PRS-107",
-  "PRS-108",
-  "PRS-109",
-  "PRS-110",
+  "Presa 01 KM",
+  "Presa 02 KM",
+  "Presa 03 KM",
+  "Presa 04 Engel",
+  "Presa 05 Arburg",
+  "Linia Asamblare 1",
+  "Linia Asamblare 2",
 ];
 
 export default function BreakdownPage() {
-  // Stări pentru formulare
   const [pressNumber, setPressNumber] = useState("");
   const [technicianName, setTechnicianName] = useState("");
   const [selectedMold, setSelectedMold] = useState(""); 
@@ -25,28 +22,36 @@ export default function BreakdownPage() {
   const [fileBefore, setFileBefore] = useState<File | null>(null);
   const [fileAfter, setFileAfter] = useState<File | null>(null);
   
-  // Stări pentru opțiunile încărcate din baza de date
+  // GESTIUNE PIESE CU CĂUTARE LIVE
+  const [partInput, setPartInput] = useState(""); // Ce scrie tehnicianul în căsuță
+  const [selectedPart, setSelectedPart] = useState(""); // Piesa finală selectată
+  const [partOptions, setPartOptions] = useState<any[]>([]);
+  const [showPartDropdown, setShowPartDropdown] = useState(false);
+
   const [technicianOptions, setTechnicianOptions] = useState<any[]>([]);
   const [moldOptions, setMoldOptions] = useState<any[]>([]); 
 
-  // Stări sesiune live și încărcare
   const [activeSession, setActiveSession] = useState<any>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Încarcă opțiunile dinamic din DB la deschiderea paginii
   useEffect(() => {
     async function fetchDropdownData() {
-      // 1. Fetch Tehnicieni din tabela public.technicians
       const { data: techs } = await supabase.from("technicians").select("id, name");
       if (techs) setTechnicianOptions(techs);
 
-      // 2. Fetch Matrițe din tabela public.tools pe baza tool_number
       const { data: molds } = await supabase
         .from("tools")
         .select("id, tool_number")
         .order("tool_number", { ascending: true });
       if (molds) setMoldOptions(molds);
+
+      // Încărcăm inițial primele piese (restul le filtrăm dinamic)
+      const { data: parts } = await supabase
+        .from("spare_parts")
+        .select("id, endr_code, specification")
+        .limit(100);
+      if (parts) setPartOptions(parts);
     }
 
     async function checkActiveSession() {
@@ -65,7 +70,26 @@ export default function BreakdownPage() {
     checkActiveSession();
   }, []);
 
-  // Cronometru activ
+  // Căutare dinamică în Supabase când utilizatorul tastează în caseta de piese
+  useEffect(() => {
+    if (partInput.trim() === "" || partInput === selectedPart) {
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      const cleanTerm = `%${partInput.trim()}%`;
+      const { data } = await supabase
+        .from("spare_parts")
+        .select("id, endr_code, specification")
+        .or(`endr_code.ilike.${cleanTerm},specification.ilike.${cleanTerm}`)
+        .limit(10); // Afișăm doar top 10 cele mai relevante sugestii
+
+      if (data) setPartOptions(data);
+    }, 300); // Așteaptă 300ms ca tehnicianul să termine de tastat (previne cereri inutile)
+
+    return () => clearTimeout(delayDebounce);
+  }, [partInput]);
+
   useEffect(() => {
     let interval: any;
     if (activeSession && activeSession.status === "Running") {
@@ -131,7 +155,7 @@ export default function BreakdownPage() {
       if (error) throw error;
 
       setActiveSession(data);
-      toast.success("Intervenție pornită cu succes! ⏱️");
+      toast.success("Intervenție pornită! ⏱️");
     } catch (error: any) {
       console.error(error);
       toast.error("Eroare la pornire: " + error.message);
@@ -151,11 +175,16 @@ export default function BreakdownPage() {
       const imageAfterUrl = await uploadPhoto(fileAfter, "after");
       const endTime = new Date().toISOString();
 
+      const finalDescription = selectedPart 
+        ? `${activeSession.issue_description} | 🔧 Piesă schimb: ${selectedPart}`
+        : activeSession.issue_description;
+
       const { error } = await supabase
         .from("breakdowns")
         .update({
           end_time: endTime,
           image_after_url: imageAfterUrl,
+          issue_description: finalDescription,
           status: "Completed",
         })
         .eq("id", activeSession.id);
@@ -168,6 +197,8 @@ export default function BreakdownPage() {
       setTechnicianName("");
       setSelectedMold("");
       setIssueDescription("");
+      setSelectedPart("");
+      setPartInput("");
       setFileBefore(null);
       setFileAfter(null);
     } catch (error: any) {
@@ -186,15 +217,13 @@ export default function BreakdownPage() {
 
       {!activeSession ? (
         <div className="space-y-4 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-xl">
-          
-          {/* SELECT PRESA / LINIE (HARDCODED LIST) */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Selectează Presă / Linie:</label>
             <select
               disabled={loading}
               value={pressNumber}
               onChange={(e) => setPressNumber(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
             >
               <option value="">-- Alege Presa --</option>
               {HARDCODED_PRESSES.map((press, index) => (
@@ -203,14 +232,13 @@ export default function BreakdownPage() {
             </select>
           </div>
 
-          {/* SELECT TEHNICIAN */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Selectează Tehnician:</label>
             <select
               disabled={loading}
               value={technicianName}
               onChange={(e) => setTechnicianName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
             >
               <option value="">-- Alege Tehnicianul --</option>
               {technicianOptions.map((item) => (
@@ -219,14 +247,13 @@ export default function BreakdownPage() {
             </select>
           </div>
 
-          {/* SELECT MATRIȚĂ DYNAMIC */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Selectează Matriță:</label>
             <select
               disabled={loading}
               value={selectedMold}
               onChange={(e) => setSelectedMold(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
             >
               <option value="">-- Alege Matrița --</option>
               {moldOptions
@@ -237,7 +264,6 @@ export default function BreakdownPage() {
             </select>
           </div>
 
-          {/* DESCRIERE */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Descriere Problemă Piesă:</label>
             <textarea
@@ -246,11 +272,10 @@ export default function BreakdownPage() {
               onChange={(e) => setIssueDescription(e.target.value)}
               placeholder="Ex: Defect de debavurare / zgârieturi"
               rows={3}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
             />
           </div>
 
-          {/* FILE INPUT BEFORE */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Foto Problemă (Before):</label>
             <input
@@ -259,20 +284,19 @@ export default function BreakdownPage() {
               capture="environment"
               disabled={loading}
               onChange={(e) => setFileBefore(e.target.files?.[0] || null)}
-              className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-white hover:file:bg-amber-700 disabled:opacity-50"
+              className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-white"
             />
           </div>
 
           <button
             onClick={handleStartIntervention}
             disabled={loading}
-            className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-xl uppercase tracking-wider transition-all active:scale-95 text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-xl uppercase tracking-wider transition-all text-sm flex items-center justify-center gap-2"
           >
             {loading ? "Se încarcă..." : "🚀 Start Intervenție & Timp"}
           </button>
         </div>
       ) : (
-        /* PANOU INTERVENȚIE IN CURS (CRONOMETRU ACTIVE) */
         <div className="space-y-6 bg-slate-800 p-5 rounded-xl border-2 border-amber-500 shadow-2xl text-center">
           <div className="animate-pulse inline-block bg-amber-500/10 text-amber-500 text-xs font-bold px-3 py-1 rounded-full border border-amber-500/30">
             🔴 OPRIRE ÎN CURS: {activeSession.press_number}
@@ -285,7 +309,49 @@ export default function BreakdownPage() {
             </div>
           </div>
 
-          <div className="text-left border-t border-slate-700 pt-4">
+          {/* NOU & INTUITIV: Input text cu filtrare inteligentă de la distanță */}
+          <div className="text-left border-t border-slate-700 pt-4 relative">
+            <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Piesă Schimb Utilizată (Opțional):</label>
+            <input
+              type="text"
+              disabled={loading}
+              value={partInput}
+              onFocus={() => setShowPartDropdown(true)}
+              onChange={(e) => setPartInput(e.target.value)}
+              placeholder="Scrie codul ENDR sau numele piesei..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+            />
+            
+            {/* Lista cu sugestiile filtrate (Apare ca un panou plutitor peste formular) */}
+            {showPartDropdown && partOptions.length > 0 && (
+              <div className="absolute left-0 right-0 mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-2xl max-h-48 overflow-y-auto z-50 divide-y divide-slate-800">
+                {partOptions.map((part) => {
+                  const partText = `[${part.endr_code || 'FĂRĂ COD'}] ${part.specification || ''}`;
+                  return (
+                    <button
+                      key={part.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedPart(partText);
+                        setPartInput(partText);
+                        setShowPartDropdown(false);
+                      }}
+                      className="w-full text-left p-2.5 text-xs hover:bg-amber-500 hover:text-slate-950 transition-colors text-slate-300 block"
+                    >
+                      {partText}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {selectedPart && (
+              <div className="text-[10px] text-emerald-400 font-bold mt-1">
+                ✅ Selectat: {selectedPart}
+              </div>
+            )}
+          </div>
+
+          <div className="text-left pt-2">
             <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Foto Remediere (After):</label>
             <input
               type="file"
@@ -293,14 +359,14 @@ export default function BreakdownPage() {
               capture="environment"
               disabled={loading}
               onChange={(e) => setFileAfter(e.target.files?.[0] || null)}
-              className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 disabled:opacity-50"
+              className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white"
             />
           </div>
 
           <button
             onClick={handleStopIntervention}
             disabled={loading}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3 rounded-xl uppercase tracking-wider transition-all active:scale-95 text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3 rounded-xl uppercase tracking-wider text-sm flex items-center justify-center gap-2"
           >
             {loading ? "Se salvează..." : "🛑 Stop & Salvează Raport"}
           </button>
