@@ -5,13 +5,14 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
 
 const HARDCODED_PRESSES = [
-  "Presa 01 KM",
-  "Presa 02 KM",
-  "Presa 03 KM",
-  "Presa 04 Engel",
-  "Presa 05 Arburg",
-  "Linia Asamblare 1",
-  "Linia Asamblare 2",
+  "PRS-103",
+  "PRS-104",
+  "PRS-105",
+  "PRS-106",
+  "PRS-107",
+  "PRS-108",
+  "PRS-109",
+  "PRS-110",
 ];
 
 export default function BreakdownPage() {
