@@ -25,7 +25,8 @@ export async function POST(request: Request) {
     // 1. Preluăm toate telefoanele/dispozitivele abonate din tabela Supabase
     const { data: devices, error } = await supabase
       .from("user_push_tokens")
-      .select("token_data");
+      .select("*");
+    console.log("DEVICES:", devices);
 
     if (error) {
       console.error("Eroare interogare Supabase:", error);
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
     // Așteptăm ca toate notificările să fie livrate către Google/Apple Push Servers
     await Promise.all(pushPromises);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true });  
   } catch (error: any) {
     console.error("Eroare critică API Push:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
