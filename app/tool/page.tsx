@@ -903,7 +903,7 @@ export default function ToolPage({ searchParams }: PageProps) {
               Locație Depozitare
             </p>
             <p className="text-lg font-black text-slate-800 mt-1">
-              {tool?.kardex_shelf ? `Raft ${tool.kardex_shelf}` : "Nalocat"}
+              {tool?.kardex_shelf ? `ENDR Warehouse Kashif  ${tool.kardex_shelf}` : "Nalocat"}
             </p>
           </div>
           <span className="text-2xl p-3 bg-slate-50 rounded-xl">🏢</span>
@@ -1258,10 +1258,10 @@ export default function ToolPage({ searchParams }: PageProps) {
                       #{rep.id}
                     </td>
                     <td className="py-3.5 px-5 font-medium text-slate-800 max-w-xs truncate">
-                      {rep.description}
+                      {rep.failure}
                     </td>
                     <td className="py-3.5 px-5 text-slate-600 font-medium">
-                      {rep.assigned_to || "Nalocat"}
+                      {rep.technician || "Nealocat"}
                     </td>
                     <td className="py-3.5 px-5 text-slate-500 text-xs">
                       {rep.created_at

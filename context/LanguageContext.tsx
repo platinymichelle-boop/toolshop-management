@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 export const translations = {
   ro: {
     // Sidebar & Dashboard Base
-    dashboard: "🏠 Dashboard", repairs: "🔧 Reparații", tools: "🧰 Utilaje / Matrițe", parts: "📦 Piese de Schimb",
+    dashboard: "🏠 Dashboard", repairs: "🔧 Reparații", tools: "🧰 Utilaje", parts: "📦 Piese de Schimb Kashif",
     technicians: "🧑‍🔧 Echipa Tehnică", improvements: "💡 Îmbunătățiri", reports: "📊 Rapoarte", settings: "⚙️ GPO / Setări",
     logout: "Deconectare", logoutConfirm: "Sigur dorești să te deconectezi din sistem?",
     dashBadge: "Sistem Management Operational", dashTitle: "ToolShop Pro — Control Panel",
@@ -18,7 +18,7 @@ export const translations = {
 
     // Modul Repairs - Formular și Liste
     repTitle: "Gestionare Tichete Mentenanță", repSub: "Deschiderea și urmărirea fișelor tehnice de service",
-    formTitle: "Deschide Fișă Service Nouă", selectTool: "Selectează Sculă / Matriță",
+    formTitle: "Deschide Fișă Service Nouă", selectTool: "Selectează Presa / Subunitate",
     inputFailure: "Descriere Defecțiune Constatată...", selectTech: "Asignează Tehnician (Opțional)",
     selectPriority: "Prioritate Tichet", selectPart: "Piesă Înlocuită din Kardex (Opțional)",
     fileBefore: "Foto Înainte (Defect)", fileAfter: "Foto După (Reparat)",
@@ -47,7 +47,7 @@ export const translations = {
   },
   en: {
     // Sidebar & Dashboard Base
-    dashboard: "🏠 Dashboard", repairs: "🔧 Repairs", tools: "🧰 Equipment / Molds", parts: "📦 Spare Parts",
+    dashboard: "🏠 Dashboard", repairs: "🔧 Repairs", tools: "🧰 Equipments", parts: "📦 Spare Parts",
     technicians: "🧑‍🔧 Technical Team", improvements: "💡 Improvements", reports: "📊 Reports", settings: "⚙️ GPO / Settings",
     logout: "Logout", logoutConfirm: "Are you sure you want to log out of the system?",
     dashBadge: "Operational Management System", dashTitle: "ToolShop Pro — Control Panel",
