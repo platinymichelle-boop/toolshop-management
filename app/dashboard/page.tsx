@@ -1,202 +1,442 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useLanguage } from "@/context/LanguageContext";
 
-export default function DashboardPage() {
-  const { t, language } = useLanguage();
-  const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalTools: 0,
-    spareParts: 0,
-    openRepairs: 0,
-    closedRepairs: 0, // Adăugat pentru sculele finalizate
-    technicians: 0,
-    activeImprovements: 0
-  });
+import {
+  Wrench,
+  ClipboardList,
+  CheckCircle,
+  AlertTriangle,
+  Users,
+  Lightbulb,
+  Clock,
+  TrendingUp,
+  FileText,
+} from "lucide-react";
 
-  // Funcție extrasă pentru a putea fi apelată și la prima încărcare, dar și la modificări live
-  async function fetchDashboardStats() {
-    try {
-      const [toolsRes, partsRes, repairsRes, closedRes, techsRes, impRes] = await Promise.all([
-        supabase.from("tools").select("*", { count: "exact", head: true }),
-        supabase.from("spare_parts").select("*", { count: "exact", head: true }),
-        supabase.from("repairs").select("*", { count: "exact", head: true }).neq("status", "Closed"),
-        supabase.from("repairs").select("*", { count: "exact", head: true }).eq("status", "Closed"), // Interogare scule finalizate
-        supabase.from("technicians").select("*", { count: "exact", head: true }).eq("active", true),
-        supabase.from("improvements").select("*", { count: "exact", head: true }).neq("status", "Implemented"),
-      ]);
+interface KPICardProps {
+  title: string;
+  value: number | string;
+  icon: React.ReactNode;
+  colorClass: string;
+}
 
-      setStats({
-        totalTools: toolsRes.count || 0,
-        spareParts: partsRes.count || 0,
-        openRepairs: repairsRes.count || 0,
-        closedRepairs: closedRes.count || 0, // Salvare valoare
-        technicians: techsRes.count || 0,
-        activeImprovements: impRes.count || 0
-      });
-    } catch (error) {
-      console.error("Eroare la preluarea statisticilor:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+const KPICard: React.FC<KPICardProps> = ({
+  title,
+  value,
+  icon,
+  colorClass,
+}) => (
+  <div className="bg-white p-6 rounded-lg shadow border border-gray-200 flex items-center justify-between">
+    <div>
+      <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+        {title}
+      </p>
+      <p className="text-3xl font-bold text-gray-900 mt-1">{value}</p>
+    </div>
+    <div className={`p-3 rounded-full ${colorClass}`}>{icon}</div>
+  </div>
+);
+
+interface Breakdown {
+  id: string;
+  created_at: string;
+  press_number: string;
+  technician_name?: string;
+  description: string;
+  status: string;
+}
+
+interface Repair {
+  id: string;
+  created_at: string;
+  press_number: string;
+  description: string;
+  status: string;
+  technician_name?: string;
+}
+
+interface MachineBreakdownCount {
+  press_number: string;
+  count: number;
+}
+
+export const DashboardPage: React.FC = () => {
+  const [loading, setLoading] = useState<boolean>(true);
+  const [totalMachines, setTotalMachines] = useState<number>(0);
+  const [openWorkOrders, setOpenWorkOrders] = useState<number>(0);
+  const [completedWorkOrders, setCompletedWorkOrders] = useState<number>(0);
+  const [activeBreakdowns, setActiveBreakdowns] = useState<number>(0);
+  const [availableTechnicians, setAvailableTechnicians] = useState<number>(0);
+  const [openImprovements, setOpenImprovements] = useState<number>(0);
+  const [recentBreakdowns, setRecentBreakdowns] = useState<Breakdown[]>([]);
+  const [topProblemMachines, setTopProblemMachines] = useState<
+    MachineBreakdownCount[]
+  >([]);
+  const [openRepairs, setOpenRepairs] = useState<Repair[]>([]);
 
   useEffect(() => {
-    setIsLoading(true);
-    // 1. Preluăm datele inițiale
-    fetchDashboardStats();
-
-    // 2. Ascultăm în timp real modificările din tabelele cheie
-    const channel = supabase
-      .channel("schema-db-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "repairs" },
-        () => {
-          fetchDashboardStats(); // Recalculează când se adaugă/modifică/șterge un tichet de reparație
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const { count: countTools } = await supabase
+          .from("tools")
+          .select("*", { count: "exact", head: true });
+        setTotalMachines(countTools || 0);
+        const { count: countOpenRepairs } = await supabase
+          .from("repairs")
+          .select("*", { count: "exact", head: true })
+          .neq("status", "Closed");
+        setOpenWorkOrders(countOpenRepairs || 0);
+        const { count: countClosedRepairs } = await supabase
+          .from("repairs")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "Closed");
+        setCompletedWorkOrders(countClosedRepairs || 0);
+        const { count: countActiveBreakdowns } = await supabase
+          .from("breakdowns")
+          .select("*", { count: "exact", head: true })
+          .neq("status", "Closed");
+        setActiveBreakdowns(countActiveBreakdowns || 0);
+        const { count: countTechs } = await supabase
+          .from("technicians")
+          .select("*", { count: "exact", head: true })
+          .eq("active", true);
+        setAvailableTechnicians(countTechs || 0);
+        const { count: countImprovements } = await supabase
+          .from("improvements")
+          .select("*", { count: "exact", head: true })
+          .neq("status", "Implemented");
+        setOpenImprovements(countImprovements || 0);
+        const { data: recentBreakdownsData } = await supabase
+          .from("breakdowns")
+          .select(
+            "id, created_at, press_number, technician_name, description, status",
+          )
+          .order("created_at", { ascending: false })
+          .limit(10);
+        setRecentBreakdowns(recentBreakdownsData || []);
+        const { data: openRepairsData } = await supabase
+          .from("repairs")
+          .select(
+            "id, created_at, press_number, description, status, technician_name",
+          )
+          .neq("status", "Closed")
+          .order("created_at", { ascending: false });
+        setOpenRepairs(openRepairsData || []);
+        const { data: allBreakdowns } = await supabase
+          .from("breakdowns")
+          .select("press_number");
+        if (allBreakdowns && allBreakdowns.length > 0) {
+          const counts: { [key: string]: number } = {};
+          allBreakdowns.forEach((item) => {
+            if (item.press_number)
+              counts[item.press_number] = (counts[item.press_number] || 0) + 1;
+          });
+          const sortedMachines: MachineBreakdownCount[] = Object.keys(counts)
+            .map((key) => ({ press_number: key, count: counts[key] }))
+            .sort((a, b) => b.count - a.count);
+          setTopProblemMachines(sortedMachines.slice(0, 5));
+        } else {
+          setTopProblemMachines([]);
         }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tools" },
-        () => {
-          fetchDashboardStats();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "improvements" },
-        () => {
-          fetchDashboardStats();
-        }
-      )
-      .subscribe();
-
-    // Curățăm abonamentul (subscription) când utilizatorul părăsește pagina
-    return () => {
-      supabase.removeChannel(channel);
+      } catch (error) {
+        console.error("Error loading dashboard metrics:", error);
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchDashboardData();
   }, []);
 
-  const localeFormat = language === "en" ? "en-US" : language === "tr" ? "tr-TR" : "ro-RO";
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Banner de Bun Venit Executiv */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-8 rounded-2xl shadow-lg border border-slate-800 relative overflow-hidden">
-        <div className="relative z-10">
-          <span className="bg-indigo-500/20 text-indigo-300 text-xs px-3 py-1 rounded-full font-semibold uppercase tracking-wider">
-            {t.dashBadge}
-          </span>
-          <h1 className="text-3xl font-black mt-2 tracking-tight">{t.dashTitle}</h1>
-          <p className="text-slate-300 mt-2 text-sm max-w-xl">{t.dashSub}</p>
+    <div className="p-6 bg-gray-50 min-h-screen space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Maintenance Dashboard
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Real-time overview of shop floor operations and live equipment
+            status.
+          </p>
         </div>
-        <div className="absolute right-0 bottom-0 opacity-10 text-[12rem] font-black select-none pointer-events-none translate-y-12 translate-x-6">⚙️</div>
-      </div>
-
-      {/* Grid Premium modificat la 6 coloane (lg:grid-cols-6) pentru noul card */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-5">
-        
-        {/* Card CLICABIL: Scule */}
-        <Link href="/tools" className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-blue-200 transition-all group">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">{t.cardTools}</p>
-              <h2 className="text-3xl font-black text-slate-800 mt-1">{isLoading ? "..." : stats.totalTools}</h2>
-            </div>
-            <span className="p-2.5 bg-blue-50 text-blue-600 rounded-xl text-lg font-bold group-hover:bg-blue-600 group-hover:text-white transition-all">🧰</span>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-50 flex items-center gap-1.5 text-xs text-green-600 font-medium">
-            <span>●</span> {t.cardToolsSub}
-          </div>
-        </Link>
-
-        {/* Card CLICABIL: Piese de schimb */}
-        <Link href="/spare-parts" className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-amber-200 transition-all group">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider group-hover:text-amber-600 transition-colors">{t.cardParts}</p>
-              <h2 className="text-3xl font-black text-slate-800 mt-1">{isLoading ? "..." : stats.spareParts.toLocaleString(localeFormat)}</h2>
-            </div>
-            <span className="p-2.5 bg-amber-50 text-amber-600 rounded-xl text-lg font-bold group-hover:bg-amber-500 group-hover:text-white transition-all">📦</span>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-50 flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-            <span>{t.cardPartsSub}</span>
-          </div>
-        </Link>
-
-        {/* Card CLICABIL: Reparații Active */}
-        <Link href="/repairs" className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-rose-200 transition-all group">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider group-hover:text-rose-500 transition-colors">{t.cardRepairs}</p>
-              <h2 className={`text-3xl font-black mt-1 ${stats.openRepairs > 5 ? "text-rose-600" : "text-slate-800"}`}>{isLoading ? "..." : stats.openRepairs}</h2>
-            </div>
-            <span className="p-2.5 bg-rose-50 text-rose-600 rounded-xl text-lg font-bold group-hover:bg-rose-500 group-hover:text-white transition-all">🔧</span>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-50 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
-            <span>{t.cardRepairsSub}</span>
-          </div>
-        </Link>
-        {/* Card CLICABIL: Scule Finalizate (Completed Tools) */}
-        <Link href="/repairs" className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-emerald-200 transition-all group">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider group-hover:text-emerald-600 transition-colors">Completed Tools</p>
-              <h2 className="text-3xl font-black text-slate-800 mt-1">{isLoading ? "..." : stats.closedRepairs}</h2>
-            </div>
-            <span className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-lg font-bold group-hover:bg-emerald-500 group-hover:text-white transition-all">✅</span>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-50 flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-            <span>Ready for assembly</span>
-          </div>
-        </Link>
-
-        {/* Card CLICABIL: Tehnicieni */}
-        <Link href="/technicians" className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-emerald-200 transition-all group">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider group-hover:text-emerald-600 transition-colors">{t.cardTechs}</p>
-              <h2 className="text-3xl font-black text-slate-800 mt-1">{isLoading ? "..." : stats.technicians}</h2>
-            </div>
-            <span className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-lg font-bold group-hover:bg-emerald-500 group-hover:text-white transition-all">👨‍🔧</span>
-          </div>
-          <div className="mt-4 pt-3 border-t border-gray-50 flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-            <span>{t.cardTechsSub}</span>
-          </div>
-        </Link>
-
-        {/* Card CLICABIL: Improvements */}
-        <Link href="/improvements" className="bg-gradient-to-br from-indigo-50 to-blue-50 p-5 rounded-2xl border border-indigo-100 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-indigo-300 transition-all group">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider group-hover:text-indigo-700 transition-colors">KAIZEN / IDEAS</p>
-              <h2 className="text-3xl font-black text-slate-800 mt-1">{isLoading ? "..." : stats.activeImprovements}</h2>
-            </div>
-            <span className="p-2.5 bg-indigo-100 text-indigo-600 rounded-xl text-lg font-bold group-hover:bg-indigo-600 group-hover:text-white transition-all">💡</span>
-          </div>
-          <div className="mt-4 pt-3 border-t border-indigo-100/30 flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
-            <span>Active proposals</span>
-          </div>
-        </Link>
-
-      </div>
-
-      {/* Secțiunea inferioară: Eficiență */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Workshop Process Efficiency</h3>
-        <div className="flex justify-between items-center text-xs text-slate-500 font-semibold">
-          <span>Technician occupancy rate</span>
-          <span className="text-slate-800 font-black">85%</span>
-        </div>
-        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-          <div className="bg-indigo-600 h-full rounded-full transition-all duration-500" style={{ width: "85%" }}></div>
+        <div className="text-sm text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+          Live Database Connected
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <KPICard
+          title="Total Machines"
+          value={totalMachines}
+          icon={<Wrench className="h-6 w-6 text-blue-600" />}
+          colorClass="bg-blue-100"
+        />
+        <KPICard
+          title="Open Work Orders"
+          value={openWorkOrders}
+          icon={<ClipboardList className="h-6 w-6 text-yellow-600" />}
+          colorClass="bg-yellow-100"
+        />
+        <KPICard
+          title="Completed Work Orders"
+          value={completedWorkOrders}
+          icon={<CheckCircle className="h-6 w-6 text-green-600" />}
+          colorClass="bg-green-100"
+        />
+        <KPICard
+          title="Active Breakdowns"
+          value={activeBreakdowns}
+          icon={<AlertTriangle className="h-6 w-6 text-red-600" />}
+          colorClass="bg-red-100"
+        />
+        <KPICard
+          title="Available Techs"
+          value={availableTechnicians}
+          icon={<Users className="h-6 w-6 text-teal-600" />}
+          colorClass="bg-teal-100"
+        />
+        <KPICard
+          title="Open Kaizens"
+          value={openImprovements}
+          icon={<Lightbulb className="h-6 w-6 text-purple-600" />}
+          colorClass="bg-purple-100"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <div className="flex items-center space-x-2 mb-4">
+            <TrendingUp className="h-5 w-5 text-gray-500" />
+            <h2 className="text-lg font-bold text-gray-900">
+              Breakdowns by Machine (Top 5)
+            </h2>
+          </div>
+          <div className="space-y-4">
+            {topProblemMachines.length === 0 ? (
+              <p className="text-gray-500 text-sm py-4 text-center">
+                No recorded breakdown events found.
+              </p>
+            ) : (
+              topProblemMachines.map((machine) => {
+                const maxCount = topProblemMachines[0]?.count || 1;
+                const percentage = (machine.count / maxCount) * 100;
+                return (
+                  <div key={machine.press_number} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-semibold text-gray-700">
+                        Machine: {machine.press_number}
+                      </span>
+                      <span className="text-gray-500 font-medium">
+                        {machine.count} incidents
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
+                      <div
+                        className="bg-red-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <div className="flex items-center space-x-2 mb-4">
+            <AlertTriangle className="h-5 w-5 text-gray-500" />
+            <h2 className="text-lg font-bold text-gray-900">
+              Top Problem Machines
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Press Number
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total Breakdown Count
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200 text-sm">
+                {topProblemMachines.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={2}
+                      className="px-6 py-4 text-center text-gray-500"
+                    >
+                      No machine incident metrics recorded.
+                    </td>
+                  </tr>
+                ) : (
+                  topProblemMachines.map((machine) => (
+                    <tr key={machine.press_number} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-semibold text-gray-900">
+                        {machine.press_number}
+                      </td>
+                      <td className="px-6 py-4 text-gray-700">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          {machine.count} Failures
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-200 flex items-center space-x-2">
+          <Clock className="h-5 w-5 text-gray-500" />
+          <h2 className="text-lg font-bold text-gray-900">
+            Recent Breakdowns (Latest 10)
+          </h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Press Number
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Technician
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Issue Description
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200 text-sm">
+              {recentBreakdowns.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-4 text-center text-gray-500"
+                  >
+                    No breakdowns found in historical records.
+                  </td>
+                </tr>
+              ) : (
+                recentBreakdowns.map((b) => (
+                  <tr key={b.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {new Date(b.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                      {b.press_number}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700">
+                      {b.technician_name || "Unassigned"}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600 truncate max-w-xs">
+                      {b.description}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${b.status === "Open" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"}`}
+                      >
+                        {b.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-200 flex items-center space-x-2">
+          <FileText className="h-5 w-5 text-gray-500" />
+          <h2 className="text-lg font-bold text-gray-900">
+            Open Work Orders (Active Repairs)
+          </h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date Logged
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Press Number
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Assigned Tech
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Task Details
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Current Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200 text-sm">
+              {openRepairs.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-4 text-center text-gray-500"
+                  >
+                    All work orders are completed! Clear backlog.
+                  </td>
+                </tr>
+              ) : (
+                openRepairs.map((repair) => (
+                  <tr key={repair.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {new Date(repair.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                      {repair.press_number}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700">
+                      {repair.technician_name || "Pending Assignment"}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600 truncate max-w-md">
+                      {repair.description}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        {repair.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
-}
+};
+export default DashboardPage;
