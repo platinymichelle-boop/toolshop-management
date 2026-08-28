@@ -17,6 +17,7 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -36,14 +37,16 @@ export default function SidebarMenu({
   const showReports = isAdmin || permissions?.can_view_reports === true;
 
   // Stări pentru controlul deschiderii fiecărei secțiuni (Acordeon)
-  // Toate pornesc pe false (închise inițial), dar dacă o pagină din interior este activă, secțiunea se deschide automat
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     OPERATIONS: ["/dashboard", "/tools", "/repairs", "/breakdown"].includes(
       pathname,
     ),
-    MAINTENANCE: ["/spare-parts", "/technicians", "/improvements"].includes(
-      pathname,
-    ),
+    MAINTENANCE: [
+      "/spare-parts",
+      "/technicians",
+      "/improvements",
+      "/preventive-maintenance",
+    ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin/matrix"].includes(pathname),
   });
@@ -127,6 +130,7 @@ export default function SidebarMenu({
           </div>
         )}
       </div>
+
       {/* Secțiunea MAINTENANCE */}
       <div className="space-y-1">
         <button
@@ -143,6 +147,16 @@ export default function SidebarMenu({
 
         {openSections.MAINTENANCE && (
           <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+            <Link
+              href="/preventive-maintenance"
+              className={linkClass("/preventive-maintenance")}
+            >
+              <ClipboardCheck
+                className={iconClass("/preventive-maintenance")}
+              />
+              <span className="truncate">Preventive Maintenance</span>
+            </Link>
+
             {showParts && (
               <Link href="/spare-parts" className={linkClass("/spare-parts")}>
                 <Package className={iconClass("/spare-parts")} />
@@ -218,7 +232,7 @@ export default function SidebarMenu({
             <div className="space-y-0.5 pt-0.5 transition-all duration-200">
               <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
                 <Settings className={iconClass("/admin/matrix")} />
-                <span className="truncate">{t.settings}</span>
+                <span className="truncate">Matrix Configuration</span>
               </Link>
             </div>
           )}
