@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { UserPermissions } from "@/lib/useSidebarAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -14,6 +15,8 @@ import {
   BarChart3,
   FileBarChart2,
   Settings,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -32,14 +35,34 @@ export default function SidebarMenu({
   const showParts = isAdmin || permissions?.can_view_parts === true;
   const showReports = isAdmin || permissions?.can_view_reports === true;
 
+  // Stări pentru controlul deschiderii fiecărei secțiuni (Acordeon)
+  // Toate pornesc pe false (închise inițial), dar dacă o pagină din interior este activă, secțiunea se deschide automat
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    OPERATIONS: ["/dashboard", "/tools", "/repairs", "/breakdown"].includes(
+      pathname,
+    ),
+    MAINTENANCE: ["/spare-parts", "/technicians", "/improvements"].includes(
+      pathname,
+    ),
+    ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
+    ADMINISTRATION: ["/admin/matrix"].includes(pathname),
+  });
+
+  const toggleSection = (section: string) => {
+    setOpenSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
   const linkClass = (path: string) => {
     const isActive = pathname === path;
     return `
-      group relative flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all duration-200
+      group relative flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all duration-200 ml-2
       ${
         isActive
           ? "bg-indigo-600/10 text-white font-extrabold border-l-2 border-indigo-500 pl-2.5 rounded-l-none"
-          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
       }
     `;
   };
@@ -51,105 +74,154 @@ export default function SidebarMenu({
     }`;
   };
 
+  const sectionButtonClass = (isOpen: boolean) => `
+    w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[11px] font-black tracking-wider uppercase transition-colors
+    ${
+      isOpen
+        ? "bg-slate-900 text-slate-200 border border-slate-800/40"
+        : "text-slate-500 hover:text-slate-300 hover:bg-slate-900/30"
+    }
+  `;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Secțiunea OPERATIONS */}
       <div className="space-y-1">
-        <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
-          OPERATIONS
-        </h3>
-        <div className="space-y-0.5">
-          <Link href="/dashboard" className={linkClass("/dashboard")}>
-            <LayoutDashboard className={iconClass("/dashboard")} />
-            <span className="truncate">{t.dashboard}</span>
-          </Link>
-
-          {showTools && (
-            <Link href="/tools" className={linkClass("/tools")}>
-              <Factory className={iconClass("/tools")} />
-              <span className="truncate">{t.tools}</span>
-            </Link>
+        <button
+          onClick={() => toggleSection("OPERATIONS")}
+          className={sectionButtonClass(openSections.OPERATIONS)}
+        >
+          <span>OPERATIONS</span>
+          {openSections.OPERATIONS ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
           )}
+        </button>
 
-          {showRepairs && (
-            <Link href="/repairs" className={linkClass("/repairs")}>
-              <Wrench className={iconClass("/repairs")} />
-              <span className="truncate">{t.repairs}</span>
+        {openSections.OPERATIONS && (
+          <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+            <Link href="/dashboard" className={linkClass("/dashboard")}>
+              <LayoutDashboard className={iconClass("/dashboard")} />
+              <span className="truncate">{t.dashboard}</span>
             </Link>
-          )}
 
-          {/* Corectat conform structurii tale: /breakdown */}
-          <Link href="/breakdown" className={linkClass("/breakdown")}>
-            <AlertTriangle className={iconClass("/breakdown")} />
-            <span className="truncate">Breakdown Tracker</span>
-          </Link>
-        </div>
+            {showTools && (
+              <Link href="/tools" className={linkClass("/tools")}>
+                <Factory className={iconClass("/tools")} />
+                <span className="truncate">{t.tools}</span>
+              </Link>
+            )}
+
+            {showRepairs && (
+              <Link href="/repairs" className={linkClass("/repairs")}>
+                <Wrench className={iconClass("/repairs")} />
+                <span className="truncate">{t.repairs}</span>
+              </Link>
+            )}
+
+            <Link href="/breakdown" className={linkClass("/breakdown")}>
+              <AlertTriangle className={iconClass("/breakdown")} />
+              <span className="truncate">Breakdown Tracker</span>
+            </Link>
+          </div>
+        )}
       </div>
-
       {/* Secțiunea MAINTENANCE */}
       <div className="space-y-1">
-        <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
-          MAINTENANCE
-        </h3>
-        <div className="space-y-0.5">
-          {showParts && (
-            <Link href="/spare-parts" className={linkClass("/spare-parts")}>
-              <Package className={iconClass("/spare-parts")} />
-              <span className="truncate">{t.parts}</span>
-            </Link>
+        <button
+          onClick={() => toggleSection("MAINTENANCE")}
+          className={sectionButtonClass(openSections.MAINTENANCE)}
+        >
+          <span>MAINTENANCE</span>
+          {openSections.MAINTENANCE ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
           )}
+        </button>
 
-          {/* Corectat conform structurii tale: /technicians */}
-          {isAdmin && (
-            <Link href="/technicians" className={linkClass("/technicians")}>
-              <Users className={iconClass("/technicians")} />
-              <span className="truncate">{t.technicians}</span>
+        {openSections.MAINTENANCE && (
+          <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+            {showParts && (
+              <Link href="/spare-parts" className={linkClass("/spare-parts")}>
+                <Package className={iconClass("/spare-parts")} />
+                <span className="truncate">{t.parts}</span>
+              </Link>
+            )}
+
+            {isAdmin && (
+              <Link href="/technicians" className={linkClass("/technicians")}>
+                <Users className={iconClass("/technicians")} />
+                <span className="truncate">{t.technicians}</span>
+              </Link>
+            )}
+
+            <Link href="/improvements" className={linkClass("/improvements")}>
+              <Lightbulb className={iconClass("/improvements")} />
+              <span className="truncate">{t.improvements}</span>
             </Link>
-          )}
-
-          <Link href="/improvements" className={linkClass("/improvements")}>
-            <Lightbulb className={iconClass("/improvements")} />
-            <span className="truncate">{t.improvements}</span>
-          </Link>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Secțiunea ANALYTICS */}
       {showReports && (
         <div className="space-y-1">
-          <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
-            ANALYTICS
-          </h3>
-          <div className="space-y-0.5">
-            {/* Corectat conform structurii tale: /breakdown/dashboard */}
-            <Link
-              href="/breakdown/dashboard"
-              className={linkClass("/breakdown/dashboard")}
-            >
-              <BarChart3 className={iconClass("/breakdown/dashboard")} />
-              <span className="truncate">Breakdown Analytics</span>
-            </Link>
+          <button
+            onClick={() => toggleSection("ANALYTICS")}
+            className={sectionButtonClass(openSections.ANALYTICS)}
+          >
+            <span>ANALYTICS</span>
+            {openSections.ANALYTICS ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
 
-            <Link href="/reports" className={linkClass("/reports")}>
-              <FileBarChart2 className={iconClass("/reports")} />
-              <span className="truncate">{t.reports}</span>
-            </Link>
-          </div>
+          {openSections.ANALYTICS && (
+            <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+              <Link
+                href="/breakdown/dashboard"
+                className={linkClass("/breakdown/dashboard")}
+              >
+                <BarChart3 className={iconClass("/breakdown/dashboard")} />
+                <span className="truncate">Breakdown Analytics</span>
+              </Link>
+
+              <Link href="/reports" className={linkClass("/reports")}>
+                <FileBarChart2 className={iconClass("/reports")} />
+                <span className="truncate">{t.reports}</span>
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
       {/* Secțiunea ADMINISTRATION */}
       {isAdmin && (
         <div className="space-y-1">
-          <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
-            ADMINISTRATION
-          </h3>
-          <div className="space-y-0.5">
-            <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
-              <Settings className={iconClass("/admin/matrix")} />
-              <span className="truncate">{t.settings}</span>
-            </Link>
-          </div>
+          <button
+            onClick={() => toggleSection("ADMINISTRATION")}
+            className={sectionButtonClass(openSections.ADMINISTRATION)}
+          >
+            <span>ADMINISTRATION</span>
+            {openSections.ADMINISTRATION ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
+
+          {openSections.ADMINISTRATION && (
+            <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+              <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
+                <Settings className={iconClass("/admin/matrix")} />
+                <span className="truncate">{t.settings}</span>
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>

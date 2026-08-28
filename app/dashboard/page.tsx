@@ -502,7 +502,7 @@ export const DashboardPage: React.FC = () => {
               {quickAccessTools.map((tool) => (
                 <Link
                   key={tool}
-                  href={`/tools/${tool}`}
+                  href={`/tools?number=${encodeURIComponent(tool)}`}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-50 border border-purple-100 text-sm font-bold text-purple-700 hover:bg-purple-100 transition-colors"
                 >
                   <Wrench className="h-3.5 w-3.5" />
@@ -557,9 +557,12 @@ export const DashboardPage: React.FC = () => {
                                 {activity.type}
                               </span>{" "}
                               logged for tool{" "}
-                              <span className="font-semibold text-blue-600">
+                              <Link
+                                href={`/tools?number=${encodeURIComponent(activity.tool_number)}`}
+                                className="font-semibold text-blue-600 hover:underline"
+                              >
                                 {activity.tool_number}
-                              </span>
+                              </Link>
                               :{" "}
                               <span className="italic">"{activity.title}"</span>
                             </p>
@@ -580,4 +583,5 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+
 export default DashboardPage;

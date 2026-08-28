@@ -160,42 +160,6 @@ export default function Sidebar() {
             </div>
           </div>
 
-          {/* Panel de Indicatori KPI sub Logo */}
-          <div className="px-4 py-3 bg-slate-900/40 border-b border-slate-800/40 grid grid-cols-2 gap-2">
-            <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50 flex flex-col">
-              <span className="text-[10px] font-bold text-slate-500 uppercase">
-                Utilaje
-              </span>
-              <span className="text-xs font-black text-slate-200 mt-0.5">
-                {kpis.machinesCount}
-              </span>
-            </div>
-            <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50 flex flex-col">
-              <span className="text-[10px] font-bold text-amber-500 uppercase">
-                Reparații
-              </span>
-              <span className="text-xs font-black text-amber-400 mt-0.5">
-                {kpis.openRepairs}
-              </span>
-            </div>
-            <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50 flex flex-col">
-              <span className="text-[10px] font-bold text-rose-500 uppercase">
-                Avarii
-              </span>
-              <span className="text-xs font-black text-rose-400 mt-0.5">
-                {kpis.openBreakdowns}
-              </span>
-            </div>
-            <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50 flex flex-col">
-              <span className="text-[10px] font-bold text-indigo-500 uppercase">
-                Stoc Mic
-              </span>
-              <span className="text-xs font-black text-indigo-400 mt-0.5">
-                {kpis.lowStockParts}
-              </span>
-            </div>
-          </div>
-
           {/* Zona de Navigație Structurată */}
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-5">
             {isLoading ? (
