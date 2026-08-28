@@ -4,6 +4,17 @@ import { useEffect, useState, use } from "react";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 
+// 1. Adaugă acest obiect sub liniile de import din fișierul tău original
+const machineConfig: Record<
+  string,
+  { structureImport: boolean; sparePartsImport: boolean }
+> = {
+  FAGOR: { structureImport: true, sparePartsImport: true },
+  ALESPRES: { structureImport: true, sparePartsImport: true },
+  PRESIX: { structureImport: true, sparePartsImport: true },
+  YADON: { structureImport: true, sparePartsImport: true },
+};
+
 interface PageProps {
   searchParams: Promise<{ number?: string }>;
 }
@@ -57,6 +68,7 @@ export default function ToolPage({ searchParams }: PageProps) {
       setIsLoading(true);
       const searchPattern = `%${cleanToolNumber}%`;
 
+      // Încarcă toate datele (inclusiv tool_number, manufacturer, machine_type datorită select("*"))
       const toolRes = await supabase
         .from("tools")
         .select("*")
@@ -84,6 +96,9 @@ export default function ToolPage({ searchParams }: PageProps) {
       }
       setRepairHistory(historyRes.data || []);
 
+      // 8. Resetăm stările arborelui la rădăcină la fiecare schimbare de utilaj pentru navigare sigură
+      setCurrentNode(null);
+      setBreadcrumb([]);
       await refreshCurrentTreeLevel(null, []);
     } catch (error) {
       console.error("Eroare la încărcarea fișei tehnice:", error);
@@ -138,11 +153,23 @@ export default function ToolPage({ searchParams }: PageProps) {
       setIsTreeLoading(false);
     }
   }
+
   async function handleExcelStructureImport(
     e: React.ChangeEvent<HTMLInputElement>,
   ) {
     const file = e.target.files?.[0];
-    if (!file || !currentNode) return;
+    if (!file || !currentNode || !tool) return;
+
+    // 1 & 6. Validare dinamică bazată pe stratul de configurare a producătorilor
+    const currentMfgKey = String(tool.manufacturer || "").toUpperCase();
+    const currentMfgConfig = machineConfig[currentMfgKey];
+
+    if (!currentMfgConfig || !currentMfgConfig.structureImport) {
+      alert(
+        `Importul de structură nu este activat sau configurat pentru producătorul: ${tool.manufacturer || "Necunoscut"}`,
+      );
+      return;
+    }
 
     // Mapare directă bazată pe noile denumiri ale disciplinelor root
     const sheetMap: Record<string, string> = {
@@ -178,7 +205,7 @@ export default function ToolPage({ searchParams }: PageProps) {
       const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
       const detectedAssemblies: string[] = [];
 
-      // 1. Identificăm dinamic indecșii coloanelor solicitate din antet
+      // Identificăm dinamic indecșii coloanelor solicitate din antet
       let codeIdx = -1;
       let denominationIdx = -1;
       let manufacturerIdx = -1;
@@ -230,11 +257,13 @@ export default function ToolPage({ searchParams }: PageProps) {
         // Adăugat în consolă pentru debugging conform cerinței
         console.log(codeValue, denominationValue, manufacturerValue);
 
-        // Condiție simplificată: să existe Code, Denomination și Producătorul să fie Fagor Arrasate
+        // 3 & 4. Condiție flexibilă: producătorul rândului curent din fișier trebuie să coincidă cu producătorul utilajului curent (ex: FAGOR, ALESPRES, PRESIX etc.)
         if (
           codeValue !== "" &&
           denominationValue !== "" &&
-          manufacturerValue === "Fagor Arrasate"
+          manufacturerValue
+            .toLowerCase()
+            .includes(tool.manufacturer.toLowerCase().trim())
         ) {
           detectedAssemblies.push(denominationValue);
         }
@@ -262,7 +291,7 @@ export default function ToolPage({ searchParams }: PageProps) {
           existingAssemblies?.map((a) => a.node_name) || [],
         );
 
-        // Copiii se creează direct sub ID-ul disciplinei curente (currentNode.id)
+        // 7. Relațiile folosesc în continuare strict tool_number și parent_id (equipment_node_id)
         const insertPayload = uniqueAssemblies
           .filter((name) => !existingSet.has(name))
           .map((name, idx) => ({
@@ -299,7 +328,18 @@ export default function ToolPage({ searchParams }: PageProps) {
     e: React.ChangeEvent<HTMLInputElement>,
   ) {
     const file = e.target.files?.[0];
-    if (!file || !currentNode) return;
+    if (!file || !currentNode || !tool) return;
+
+    // 1 & 6. Validare dinamică bazată pe stratul de configurare a producătorilor
+    const currentMfgKey = String(tool.manufacturer || "").toUpperCase();
+    const currentMfgConfig = machineConfig[currentMfgKey];
+
+    if (!currentMfgConfig || !currentMfgConfig.sparePartsImport) {
+      alert(
+        `Importul de piese de schimb nu este activat sau configurat pentru producătorul: ${tool.manufacturer || "Necunoscut"}`,
+      );
+      return;
+    }
 
     // 1. Determină disciplina părinte din breadcrumb pentru a alege sheet-ul corect
     const breadcrumbNames = (breadcrumb || []).map((b) =>
@@ -325,7 +365,7 @@ export default function ToolPage({ searchParams }: PageProps) {
     }
 
     try {
-      setIsImportingSpareParts?.(true); // Dacă ai un state dedicat, altfel folosește un loader general
+      setIsImportingSpareParts(true); // Folosește state-ul dedicat definit în componentă
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
 
@@ -370,7 +410,6 @@ export default function ToolPage({ searchParams }: PageProps) {
         );
         return;
       }
-
       let isWithinTargetAssembly = false;
       const targetPartsPayload: any[] = [];
 
@@ -394,11 +433,13 @@ export default function ToolPage({ searchParams }: PageProps) {
 
         if (denominationValue.toLowerCase() === "denomination") continue;
 
-        // Verificăm dacă rândul curent definește o grupare de tip Assembly (Fagor Arrasate)
+        // 3. Verificăm dinamic dacă rândul definește o grupare de tip Assembly pe baza producătorului mașinii curente
         const isAssemblyRow =
           codeValue !== "" &&
           denominationValue !== "" &&
-          manufacturerValue === "Fagor Arrasate";
+          manufacturerValue
+            .toLowerCase()
+            .includes(tool.manufacturer.toLowerCase().trim());
 
         if (isAssemblyRow) {
           if (isWithinTargetAssembly) {
@@ -421,6 +462,7 @@ export default function ToolPage({ searchParams }: PageProps) {
           // Ignorăm rândurile goale sau invalide din interiorul grupului
           if (!codeValue && !denominationValue) continue;
 
+          // 7. Relațiile folosesc în continuare strict tool_number și equipment_node_id
           targetPartsPayload.push({
             tool_number: cleanToolNumber,
             equipment_node_id: currentNode.id,
@@ -433,7 +475,6 @@ export default function ToolPage({ searchParams }: PageProps) {
           });
         }
       }
-
       // 7. Sincronizare cu baza de date (Evitare duplicate folosind cheia equipment_node_id + part_number)
       let imported = 0;
       let updated = 0;
@@ -443,6 +484,7 @@ export default function ToolPage({ searchParams }: PageProps) {
         alert(
           `Nu s-au găsit piese de schimb sub ansamblul "${currentNode.node_name}" în fișierul Excel.`,
         );
+        setIsImportingSpareParts(false);
         return;
       }
 
@@ -500,12 +542,12 @@ export default function ToolPage({ searchParams }: PageProps) {
           `❌ Skipped (Erori): ${skipped}`,
       );
 
-      // Refresh pe panoul curent
+      // Refresh pe panoul curent pentru a verifica alocarea pieselor
       await refreshCurrentTreeLevel(currentNode, breadcrumb);
     } catch (err: any) {
       alert("Eroare la importul pieselor de schimb: " + err.message);
     } finally {
-      setIsImportingSpareParts?.(false);
+      setIsImportingSpareParts(false);
       e.target.value = "";
     }
   }
@@ -1178,22 +1220,33 @@ export default function ToolPage({ searchParams }: PageProps) {
                           {/* BUTON INTELIGENT DETECTOR SHEET / DOC */}
                           <button
                             onClick={() => {
-                              if (
-                                part.datasheet_url &&
-                                part.datasheet_url.trim() !== ""
-                              ) {
-                                window.open(part.datasheet_url, "_blank");
-                              } else {
-                                const searchQuery = encodeURIComponent(
-                                  `${part.specification || part.part_name || ""} ${part.endr_code || ""} datasheet`,
-                                );
-                                // CORECTAT: Adăugat ruta corectă /search?q= și simbolul $ pentru variabilă
-                                // SCHIMBĂ DOAR LINIA DE MAI JOS:
+                              if (part.datasheet_url?.trim()) {
+                                let url = part.datasheet_url.trim();
+
+                                if (
+                                  !url.startsWith("http://") &&
+                                  !url.startsWith("https://")
+                                ) {
+                                  url = `https://${url}`;
+                                }
+
                                 window.open(
-                                  `https://google.com{searchQuery}`,
+                                  url,
                                   "_blank",
+                                  "noopener,noreferrer",
                                 );
+                                return;
                               }
+
+                              const searchQuery = encodeURIComponent(
+                                `${part.manufacturer || ""} ${part.part_number || ""} ${part.specification || ""}`,
+                              );
+
+                              // Deschide direct Google Images
+                              window.open(
+                                `https://www.google.com/search?tbm=isch&q=${searchQuery}`,
+                                "_blank",
+                              );
                             }}
                             className={`inline-flex items-center px-2 py-1.5 border shadow-sm text-xs font-bold rounded-lg transition-colors ${
                               part.datasheet_url
