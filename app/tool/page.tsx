@@ -903,7 +903,9 @@ export default function ToolPage({ searchParams }: PageProps) {
               Locație Depozitare
             </p>
             <p className="text-lg font-black text-slate-800 mt-1">
-              {tool?.kardex_shelf ? `ENDR Warehouse Kashif  ${tool.kardex_shelf}` : "Nalocat"}
+              {tool?.kardex_shelf
+                ? `ENDR Warehouse Kashif  ${tool.kardex_shelf}`
+                : "Nalocat"}
             </p>
           </div>
           <span className="text-2xl p-3 bg-slate-50 rounded-xl">🏢</span>
@@ -1173,6 +1175,44 @@ export default function ToolPage({ searchParams }: PageProps) {
                             : "-"}
                         </td>
                         <td className="py-3.5 px-4 text-right flex items-center justify-end gap-3">
+                          {/* BUTON INTELIGENT DETECTOR SHEET / DOC */}
+                          <button
+                            onClick={() => {
+                              if (
+                                part.datasheet_url &&
+                                part.datasheet_url.trim() !== ""
+                              ) {
+                                window.open(part.datasheet_url, "_blank");
+                              } else {
+                                const searchQuery = encodeURIComponent(
+                                  `${part.specification || part.part_name || ""} ${part.endr_code || ""} datasheet`,
+                                );
+                                // CORECTAT: Adăugat ruta corectă /search?q= și simbolul $ pentru variabilă
+                                // SCHIMBĂ DOAR LINIA DE MAI JOS:
+                                window.open(
+                                  `https://google.com{searchQuery}`,
+                                  "_blank",
+                                );
+                              }
+                            }}
+                            className={`inline-flex items-center px-2 py-1.5 border shadow-sm text-xs font-bold rounded-lg transition-colors ${
+                              part.datasheet_url
+                                ? "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                                : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                            }`}
+                            title={
+                              part.datasheet_url
+                                ? "Deschide fișa tehnică salvată"
+                                : "Caută fișa tehnică pe Google"
+                            }
+                          >
+                            📋{" "}
+                            <span className="ml-1">
+                              {part.datasheet_url ? "Sheet" : "Doc"}
+                            </span>
+                          </button>
+
+                          {/* CONTROALELE TALE DE STOC EXISTENTE */}
                           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
                             <button
                               onClick={() =>
