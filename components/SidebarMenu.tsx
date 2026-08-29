@@ -129,6 +129,11 @@ export default function SidebarMenu({
               <AlertTriangle className={iconClass("/breakdown")} />
               <span className="truncate">Breakdown Tracker</span>
             </Link>
+
+            <Link href="/live-factory" className={linkClass("/live-factory")}>
+              <Factory className={iconClass("/live-factory")} />
+              <span className="truncate">Factory Monitor</span>
+            </Link>
           </div>
         )}
       </div>
@@ -153,6 +158,7 @@ export default function SidebarMenu({
               href="/preventive-maintenance"
               className={linkClass("/preventive-maintenance")}
             >
+              {/* Notă: Poți adăuga o iconiță aici dacă dorești pentru consistență */}
               <span className="truncate">Preventive Maintenance</span>
             </Link>
 

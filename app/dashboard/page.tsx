@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import LiveFactoryStatus from "@/components/LiveFactoryStatus";
 import Link from "next/link";
 import {
   Wrench,
@@ -281,7 +280,7 @@ export const DashboardPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
             Maintenance Dashboard
-            <LiveFactoryStatus />
+          
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             Real-time overview of shop floor operations and live equipment
