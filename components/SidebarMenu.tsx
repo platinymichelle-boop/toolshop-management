@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
+  History,
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -46,6 +47,7 @@ export default function SidebarMenu({
       "/technicians",
       "/improvements",
       "/preventive-maintenance",
+      "/pm-history",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin/matrix"].includes(pathname),
@@ -151,18 +153,13 @@ export default function SidebarMenu({
               href="/preventive-maintenance"
               className={linkClass("/preventive-maintenance")}
             >
-              <ClipboardCheck
-                className={iconClass("/preventive-maintenance")}
-              />
               <span className="truncate">Preventive Maintenance</span>
             </Link>
 
-            {showParts && (
-              <Link href="/spare-parts" className={linkClass("/spare-parts")}>
-                <Package className={iconClass("/spare-parts")} />
-                <span className="truncate">{t.parts}</span>
-              </Link>
-            )}
+            <Link href="/pm-history" className={linkClass("/pm-history")}>
+              <History className={iconClass("/pm-history")} />
+              <span className="truncate">PM History</span>
+            </Link>
 
             {isAdmin && (
               <Link href="/technicians" className={linkClass("/technicians")}>

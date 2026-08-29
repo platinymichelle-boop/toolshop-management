@@ -20,13 +20,15 @@ import {
   Layers,
   Hourglass,
   X,
+  User,
+  FileText,
+  Loader2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface PMTask {
   id: string;
   tool_number: string;
-
   equipment: string;
   sub_equipment: string;
   action: string;
@@ -38,6 +40,12 @@ interface PMTask {
   part_reference: string | null;
   estimated_minutes: number | null;
   created_at?: string;
+}
+
+// Interfață nouă pentru citirea tehnicienilor din tabelă
+interface Technician {
+  id: string;
+  name: string;
 }
 
 const calculateStatus = (nextDueAt: string | null): PMTask["status"] => {
@@ -86,6 +94,7 @@ const calculateNextDueDate = (frequencyCode: string): string => {
 
 export default function PreventiveMaintenanceDashboard() {
   const [tasks, setTasks] = useState<PMTask[]>([]);
+  const [completedThisMonth, setCompletedThisMonth] = useState(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [importing, setImporting] = useState<boolean>(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -105,6 +114,14 @@ export default function PreventiveMaintenanceDashboard() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- STĂRI NOI PENTRU OPTIUNEA COMPLETE PM MODAL ---
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [isCompleteModalOpen, setIsCompleteModalOpen] =
+    useState<boolean>(false);
+  const [taskToComplete, setTaskToComplete] = useState<PMTask | null>(null);
+  const [selectedTechId, setSelectedTechId] = useState<string>("");
+  const [remarks, setRemarks] = useState<string>("");
+  const [modalError, setModalError] = useState<string>("");
   const fetchTasks = async () => {
     setLoading(true);
     setError(null);
@@ -122,38 +139,87 @@ export default function PreventiveMaintenanceDashboard() {
         return { ...task, status: currentStatus };
       });
       setTasks(processedTasks);
+
+      // Populare dropdown din tabela technicians ordonați alfabetic
+      const { data: techData, error: techError } = await supabase
+        .from("technicians")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (!techError && techData) {
+        setTechnicians(techData);
+      }
     } catch (err: any) {
       setError(err.message || "A apărut o eroare la preluarea datelor.");
     } finally {
       setLoading(false);
     }
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    const { data: historyData } = await supabase
+      .from("pm_history")
+      .select("created_at");
+
+    const completedCount =
+      historyData?.filter((item) => item.created_at?.startsWith(currentMonth))
+        .length || 0;
+
+    setCompletedThisMonth(completedCount);
   };
 
   useEffect(() => {
     fetchTasks();
   }, []);
 
-  const handleCompleteTask = async (task: PMTask) => {
-    setActionLoadingId(task.id);
-    setError(null);
-    setImportSummary(null);
+  // Handler nou care deschide modalul în loc să execute direct
+  const handleOpenCompleteModal = (task: PMTask) => {
+    setTaskToComplete(task);
+    setSelectedTechId("");
+    setRemarks("");
+    setModalError("");
+    setIsCompleteModalOpen(true);
+  };
 
-    // Corectat: Extrage string-ul cu data în format YYYY-MM-DD în loc de array
+  // Logica de salvare din interiorul modalului cu validările cerute
+  const handleCompleteTaskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskToComplete) return;
+
+    // Cerința 8: Verificare dacă tehnicianul este selectat
+    if (!selectedTechId) {
+      setModalError(
+        "Please select the technician who performed the maintenance.",
+      );
+      return;
+    }
+
+    setActionLoadingId(taskToComplete.id);
+    setModalError("");
     const todayStr = new Date().toISOString().split("T")[0];
-    const nextDueStr = calculateNextDueDate(task.frequency);
+    const nextDueStr = calculateNextDueDate(taskToComplete.frequency);
     const updatedStatus = calculateStatus(nextDueStr);
 
+    const activeTech = technicians.find(
+      (t) => String(t.id) === String(selectedTechId),
+    );
+    const technicianName = activeTech ? activeTech.name : "";
+
     try {
-      // Inserare în istoricul mentenanței
+      // Cerința 4 & 5: Salvare completă și auditare în tabela pm_history
       const { error: historyErr } = await supabase.from("pm_history").insert({
-        task_id: task.id,
-        tool_number: task.tool_number,
-        equipment: task.equipment,
-        sub_equipment: task.sub_equipment,
-        action: task.action,
-        technician: task.technician,
+        pm_task_id: taskToComplete.id,
+        tool_number: taskToComplete.tool_number,
+        equipment: taskToComplete.equipment,
+        sub_equipment: taskToComplete.sub_equipment,
+        action: taskToComplete.action,
+        technician_id: selectedTechId,
+        technician_name: technicianName,
+        completed_by: technicianName, // Se păstrează compatibilitatea cu versiunile vechi
         completed_at: todayStr,
+        result: "COMPLETED",
+        remarks: remarks.trim() || null,
       });
+
       if (historyErr) throw historyErr;
 
       // Actualizare stare în tabelul principal de sarcini active
@@ -164,18 +230,20 @@ export default function PreventiveMaintenanceDashboard() {
           next_due_at: nextDueStr,
           status: updatedStatus,
         })
-        .eq("id", task.id);
+        .eq("id", taskToComplete.id);
       if (updateErr) throw updateErr;
 
-      // Reîmprospătare listă din interfață
+      setIsCompleteModalOpen(false);
+      setTaskToComplete(null);
       await fetchTasks();
     } catch (err: any) {
-      setError(err.message || "Eroare la salvarea finalizării mentenanței.");
+      setModalError(
+        err.message || "Eroare la salvarea finalizării mentenanței.",
+      );
     } finally {
       setActionLoadingId(null);
     }
   };
-
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -192,7 +260,6 @@ export default function PreventiveMaintenanceDashboard() {
         let skippedCount = 0;
         const tasksToInsert: any[] = [];
 
-        // Preluăm sarcinile existente din baza de date pentru a preveni duplicatele
         const { data: existingTasks, error: fetchErr } = await supabase
           .from("pm_tasks")
           .select("tool_number, equipment, sub_equipment, action");
@@ -215,150 +282,38 @@ export default function PreventiveMaintenanceDashboard() {
 
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-
-          // Modificare: Citire fișier ca matrice de matrice (pe bază de indecși)
           const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
             header: 1,
             defval: "",
           });
 
           let isFirstRow = true;
-
           for (const row of rows) {
-            // Sărim peste antetul tabelului (primul rând din foaie)
             if (isFirstRow) {
               isFirstRow = false;
               continue;
             }
+            if (!row || row.length === 0) continue;
 
-            // Dacă rândul este complet gol sau nu are suficiente elemente, îl ignorăm
-            if (!row || row.length === 0) {
-              continue;
-            }
-
-            // Helper pentru curățare caractere și spații libere
             const cleanValue = (val: any): string => {
               if (val === undefined || val === null) return "";
               const str = String(val).trim();
               return str === "-" ? "" : str;
             };
 
-            // 4. Citirea coloanelor prin indexul absolut din Excel
             const workcenter = cleanValue(row[0]);
-            const equipment = cleanValue(row[1]);
-            const sub_equipment = cleanValue(row[2]);
-            const action = cleanValue(row[3]);
-            const frequency = cleanValue(row[4]) || "1L";
-            const maintenance_equipment = cleanValue(row[5]);
-            const operation = cleanValue(row[6]);
-            const control_method = cleanValue(row[7]);
-            const technician = cleanValue(row[8]) || "Echipa Tehnică";
-            const estimated_time = cleanValue(row[9]);
-            const part_reference = cleanValue(row[10]) || null;
-
-            const tool_number = sheetName.trim();
-
-            // Calculare minute din coloana TIME (index 9)
-            const estimated_minutes = estimated_time
-              ? parseInt(estimated_time.replace(/[^0-9]/g, ""), 10) || null
-              : null;
-
-            // 5. Verificare reguli SKIP înainte de import
-            if (!action) {
-              skippedCount++;
-              continue;
-            }
-
-            const lowerAction = action.toLowerCase();
-            if (
-              lowerAction.includes("supplier instructions") ||
-              lowerAction.includes("instructions") ||
-              lowerAction.includes("see")
-            ) {
-              skippedCount++;
-              continue;
-            }
-
-            // 7. Verificare duplicate (păstrare logică existentSet)
-            const lookupKey = `${tool_number.toLowerCase()}|${equipment.toLowerCase()}|${sub_equipment.toLowerCase()}|${action.toLowerCase()}`;
-            if (existingSet.has(lookupKey)) {
-              skippedCount++;
-              continue;
-            }
-
-            const nextDueAt = calculateNextDueDate(frequency);
-            const initialStatus = calculateStatus(nextDueAt);
-
-            // 6. Inserare în obiectul final cu toate coloanele solicitate din pm_tasks
-            tasksToInsert.push({
-              tool_number,
-              workcenter,
-              equipment,
-              sub_equipment: sub_equipment || null,
-              action,
-              frequency,
-              maintenance_equipment: maintenance_equipment || null,
-              operation: operation || null,
-              control_method: control_method || null,
-              technician,
-              estimated_time: estimated_time || null,
-              estimated_minutes,
-              part_reference,
-              status: initialStatus,
-              last_completed_at: null,
-              next_due_at: nextDueAt,
-            });
-
-            existingSet.add(lookupKey);
-            importedCount++;
           }
-
-          // Console logs pentru depanare rapidă în browser
-          console.log(
-            `[Import] Foaie: ${sheetName} | Total adăugate în buffer: ${tasksToInsert.length}`,
-          );
         }
-
-        // Trimitere payload bulk în tabela pm_tasks din Supabase
-        if (tasksToInsert.length > 0) {
-          const { error: insertErr } = await supabase
-            .from("pm_tasks")
-            .insert(tasksToInsert);
-          if (insertErr) throw insertErr;
-        }
-
-        setImportSummary({ imported: importedCount, skipped: skippedCount });
-        await fetchTasks();
       } catch (err: any) {
-        setError(err.message || "Eroare la procesarea fișierului Excel.");
+        setError(err.message || "Eroare la importul fișierului.");
       } finally {
         setImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
-
     reader.readAsBinaryString(file);
   };
-  const kpis = useMemo(() => {
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
-    return tasks.reduce(
-      (acc, task) => {
-        acc.total++;
-        if (task.status === "OPEN") acc.open++;
-        else if (task.status === "DUE_SOON") acc.dueSoon++;
-        else if (task.status === "OVERDUE") acc.overdue++;
-        if (
-          task.last_completed_at &&
-          task.last_completed_at.startsWith(currentMonthStr)
-        ) {
-          acc.completedThisMonth++;
-        }
-        return acc;
-      },
-      { total: 0, open: 0, dueSoon: 0, overdue: 0, completedThisMonth: 0 },
-    );
-  }, [tasks]);
 
+  // --- LOGICĂ INTERFAȚĂ FILTRARE / SORTARE ---
   const handleSort = (column: keyof PMTask) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -366,539 +321,453 @@ export default function PreventiveMaintenanceDashboard() {
       setSortColumn(column);
       setSortDirection("asc");
     }
-    setCurrentPage(1);
   };
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      const matchesStatus =
-        statusFilter === "ALL" || task.status === statusFilter;
-      const searchFields = [
-        task.tool_number,
-        task.equipment,
-        task.sub_equipment,
-        task.action,
-        task.frequency,
-        task.technician,
-        task.status,
-        task.part_reference,
-      ].map((field) => (field || "").toLowerCase());
+    return tasks
+      .filter((task) => {
+        const matchesSearch =
+          task.tool_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          task.equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          task.sub_equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          task.action.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesSearch = searchFields.some((field) =>
-        field.includes(searchTerm.toLowerCase()),
-      );
-      return matchesStatus && matchesSearch;
-    });
-  }, [tasks, searchTerm, statusFilter]);
+        const matchesStatus =
+          statusFilter === "ALL" || task.status === statusFilter;
 
-  const sortedTasks = useMemo(() => {
-    return [...filteredTasks].sort((a, b) => {
-      const valA = String(a[sortColumn] || "").toLowerCase();
-      const valB = String(b[sortColumn] || "").toLowerCase();
-      if (valA < valB) return sortDirection === "asc" ? -1 : 1;
-      if (valA > valB) return sortDirection === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [filteredTasks, sortColumn, sortDirection]);
+        return matchesSearch && matchesStatus;
+      })
+      .sort((a, b) => {
+        const valA = a[sortColumn] || "";
+        const valB = b[sortColumn] || "";
+        if (valA < valB) return sortDirection === "asc" ? -1 : 1;
+        if (valA > valB) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+  }, [tasks, searchTerm, statusFilter, sortColumn, sortDirection]);
 
-  const totalPages = Math.ceil(sortedTasks.length / itemsPerPage) || 1;
+  const totalPages = Math.ceil(filteredTasks.length / itemsPerPage) || 1;
   const paginatedTasks = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return sortedTasks.slice(startIndex, startIndex + itemsPerPage);
-  }, [sortedTasks, currentPage]);
+    return filteredTasks.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredTasks, currentPage]);
 
-  const getStatusStyle = (status: PMTask["status"]) => {
-    switch (status) {
-      case "COMPLETED":
-        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-      case "OVERDUE":
-        return "bg-rose-500/10 text-rose-400 border-rose-500/20";
-      case "DUE_SOON":
-        return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-      case "OPEN":
-      default:
-        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-    }
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "-";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("ro-RO", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  const metrics = useMemo(() => {
+    const total = tasks.length;
+    const overdue = tasks.filter((t) => t.status === "OVERDUE").length;
+    const dueSoon = tasks.filter((t) => t.status === "DUE_SOON").length;
+    return { total, overdue, dueSoon };
+  }, [tasks]);
 
   return (
-    <div className="p-6 space-y-6 bg-slate-950 min-h-screen text-slate-100">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-slate-50 min-h-screen text-slate-800">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white">
-            Preventive Maintenance Dashboard
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Preventive Maintenance
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Monitorizarea și gestionarea planificărilor de mentenanță
-            preventivă.
+          <p className="text-slate-500 mt-1">
+            Monitorizarea și gestionarea mentenanței preventive utilaje.
           </p>
         </div>
-
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleExcelImport}
-            accept=".xlsx, .xls"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors shadow-md shadow-indigo-600/10"
-          >
-            <Download className="h-3.5 w-3.5 rotate-180" />
-            {importing ? "Se importă..." : "📥 Import PM Plan"}
-          </button>
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <button
             onClick={fetchTasks}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800/80 rounded-lg text-xs font-bold text-slate-300 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg shadow-sm transition-colors text-sm font-medium disabled:opacity-50"
           >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-            />
-            Actualizează
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold rounded-xl">
-          {error}
-        </div>
-      )}
-      {importSummary && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>Fișierul Excel a fost procesat!</span>
+      {/* Grid Status Metrics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+            <Layers className="w-6 h-6" />
           </div>
-          <div className="flex gap-4 text-[11px] uppercase tracking-wider">
-            <span>
-              Importate:{" "}
-              <strong className="text-white bg-emerald-600 px-1.5 py-0.5 rounded">
-                {importSummary.imported}
-              </strong>
-            </span>
-            <span>
-              Ignorate:{" "}
-              <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">
-                {importSummary.skipped}
-              </strong>
-            </span>
+          <div>
+            <p className="text-sm font-medium text-slate-500">Total PM Tasks</p>
+            <p className="text-2xl font-bold text-slate-900">{metrics.total}</p>
           </div>
         </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              Total PM Tasks
-            </span>
-            <p className="text-2xl font-black text-white">
-              {loading ? "..." : kpis.total}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div className="p-3 bg-red-50 text-red-600 rounded-lg">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-500">Overdue Tasks</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {metrics.overdue}
             </p>
           </div>
-          <div className="h-10 w-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
-            <Wrench className="h-5 w-5" />
-          </div>
         </div>
-
-        <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              Open Tasks
-            </span>
-            <p className="text-2xl font-black text-blue-400">
-              {loading ? "..." : kpis.open}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
+            <Hourglass className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-500">Due Soon Tasks</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {metrics.dueSoon}
             </p>
           </div>
-          <div className="h-10 w-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-            <Clock className="h-5 w-5" />
-          </div>
         </div>
-
-        <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              Due Soon
-            </span>
-            <p className="text-2xl font-black text-amber-400">
-              {loading ? "..." : kpis.dueSoon}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div className="p-3 bg-green-50 text-green-600 rounded-lg">
+            <CheckSquare className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-500">
+              Completed This Month
             </p>
-          </div>
-          <div className="h-10 w-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-            <CalendarDays className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              Overdue Tasks
-            </span>
-            <p className="text-2xl font-black text-rose-400">
-              {loading ? "..." : kpis.overdue}
+            <p className="text-2xl font-bold text-slate-900">
+              {completedThisMonth}
             </p>
-          </div>
-          <div className="h-10 w-10 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-            <AlertCircle className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              Completed Month
-            </span>
-            <p className="text-2xl font-black text-emerald-400">
-              {loading ? "..." : kpis.completedThisMonth}
-            </p>
-          </div>
-          <div className="h-10 w-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <CheckCircle2 className="h-5 w-5" />
           </div>
         </div>
       </div>
-      {/* Control Tabel, Căutare și Filtre */}
-      <div className="bg-slate-900 border border-slate-800/60 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-800/60 flex flex-col md:flex-row items-center gap-3 justify-between">
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-            {/* Căutare text */}
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Caută în tabel sau piesă..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs font-medium text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-500 transition-colors"
-              />
-            </div>
-
-            {/* Filtru Status */}
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
+      {/* Search & Filters Toolbar */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full md:max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search by tool, equipment, sub-equipment or action..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+        </div>
+        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+          {["ALL", "OPEN", "DUE_SOON", "OVERDUE", "COMPLETED"].map((status) => (
+            <button
+              key={status}
+              onClick={() => {
+                setStatusFilter(status);
                 setCurrentPage(1);
               }}
-              className="w-full sm:w-auto px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs font-bold text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                statusFilter === status
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
             >
-              <option value="ALL">Toate Statusurile</option>
-              <option value="OPEN">OPEN (Planificate)</option>
-              <option value="DUE_SOON">DUE SOON (În 7 zile)</option>
-              <option value="OVERDUE">OVERDUE (Restante)</option>
-            </select>
-          </div>
-
-          <div className="text-[11px] font-bold text-slate-400">
-            Afișate:{" "}
-            {filteredTasks.length === 0
-              ? 0
-              : (currentPage - 1) * itemsPerPage + 1}{" "}
-            - {Math.min(currentPage * itemsPerPage, filteredTasks.length)} din{" "}
-            {filteredTasks.length} înregistrări
-          </div>
-        </div>
-
-        {/* Tabelul de Date Extins */}
-        <div className="overflow-x-auto">
-          {loading ? (
-            <div className="p-12 text-center text-xs font-bold text-slate-400 space-y-2">
-              <RefreshCw className="h-5 w-5 animate-spin mx-auto text-indigo-500" />
-              <span>Se încarcă datele...</span>
-            </div>
-          ) : !loading && paginatedTasks.length === 0 ? (
-            <div className="p-12 text-center text-xs font-semibold text-slate-500">
-              Nu s-au găsit sarcini de mentenanță preventivă pentru criteriile
-              selectate.
-            </div>
-          ) : (
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="bg-slate-950 border-b border-slate-800/80 text-[11px] font-black uppercase tracking-wider text-slate-400 select-none">
-                  {(
-                    [
-                      "tool_number",
-                      "equipment",
-                      "sub_equipment",
-                      "action",
-                      "frequency",
-                      "technician",
-                      "part_reference",
-                      "estimated_minutes",
-                      "last_completed_at",
-                      "next_due_at",
-                      "status",
-                    ] as Array<keyof PMTask>
-                  ).map((col) => (
-                    <th
-                      key={col}
-                      onClick={() => handleSort(col)}
-                      className="px-4 py-3 cursor-pointer hover:bg-slate-900/50 hover:text-slate-200 transition-colors whitespace-nowrap"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>{col.replace(/_/g, " ")}</span>
-                        {sortColumn === col ? (
-                          sortDirection === "asc" ? (
-                            <ChevronUp className="h-3.5 w-3.5 text-indigo-400" />
-                          ) : (
-                            <ChevronDown className="h-3.5 w-3.5 text-indigo-400" />
-                          )
-                        ) : (
-                          <div className="h-3.5 w-3.5 opacity-0" />
-                        )}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-slate-400 text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/40 text-xs font-medium text-slate-300">
-                {paginatedTasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className="hover:bg-slate-950/40 transition-colors"
-                  >
-                    <td className="px-4 py-3.5 font-bold text-white whitespace-nowrap">
-                      {task.tool_number}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      {task.equipment}
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-400 whitespace-nowrap">
-                      {task.sub_equipment || "-"}
-                    </td>
-                    <td
-                      className="px-4 py-3.5 max-w-xs truncate"
-                      title={task.action}
-                    >
-                      {task.action}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] font-black text-slate-400">
-                        {task.frequency}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-200 whitespace-nowrap">
-                      {task.technician}
-                    </td>
-                    {/* Noile Coloane Solicitate */}
-                    <td className="px-4 py-3.5 text-indigo-400 font-mono whitespace-nowrap">
-                      {task.part_reference || "-"}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap font-bold text-slate-200">
-                      {task.estimated_minutes
-                        ? `${task.estimated_minutes} min`
-                        : "-"}
-                    </td>
-
-                    <td className="px-4 py-3.5 whitespace-nowrap text-slate-400">
-                      {formatDate(task.last_completed_at)}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap font-bold text-slate-200">
-                      {formatDate(task.next_due_at)}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-black border tracking-wide ${getStatusStyle(task.status)}`}
-                      >
-                        {task.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => setSelectedTask(task)}
-                          className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 rounded-lg transition-colors"
-                          title="Vezi detalii"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleCompleteTask(task)}
-                          disabled={actionLoadingId !== null}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600/10 border border-emerald-500/20 hover:bg-emerald-600 hover:text-white rounded-lg text-[11px] font-black text-emerald-400 transition-all active:scale-95 disabled:opacity-40"
-                        >
-                          <CheckSquare className="h-3.5 w-3.5" />
-                          {actionLoadingId === task.id ? "..." : "Complete PM"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Paginare Control */}
-        {!loading && totalPages > 1 && (
-          <div className="p-4 bg-slate-950/40 border-t border-slate-800/60 flex items-center justify-between">
-            <button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Anterior
+              {status.replace("_", " ")}
             </button>
-            <div className="text-xs font-bold text-slate-400">
-              Pagina <span className="text-white">{currentPage}</span> din{" "}
-              <span className="text-white">{totalPages}</span>
-            </div>
-            <button
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
-              disabled={currentPage === totalPages}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
-            >
-              Următor <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
-      {/* Task Details Modal */}
+      {/* Main Table Section */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider select-none">
+                {[
+                  { label: "Tool No.", key: "tool_number" },
+                  { label: "Equipment", key: "equipment" },
+                  { label: "Sub Equipment", key: "sub_equipment" },
+                  { label: "Action Description", key: "action" },
+                  { label: "Freq", key: "frequency" },
+                  { label: "Status", key: "status" },
+                  { label: "Next Due", key: "next_due_at" },
+                ].map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key as keyof PMTask)}
+                    className="p-4 cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1">
+                      {col.label}
+                      {sortColumn === col.key ? (
+                        sortDirection === "asc" ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )
+                      ) : null}
+                    </div>
+                  </th>
+                ))}
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-sm text-slate-700">
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
+                    Loading preventive tasks...
+                  </td>
+                </tr>
+              ) : paginatedTasks.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
+                    No matching tasks found.
+                  </td>
+                </tr>
+              ) : (
+                paginatedTasks.map((task) => (
+                  <tr
+                    key={task.id}
+                    className="hover:bg-slate-50/40 transition-colors"
+                  >
+                    <td className="p-4 font-mono font-medium text-xs whitespace-nowrap">
+                      {task.tool_number}
+                    </td>
+                    <td className="p-4 font-medium text-slate-900">
+                      {task.equipment}
+                    </td>
+                    <td className="p-4 text-slate-600">
+                      {task.sub_equipment || "-"}
+                    </td>
+                    <td className="p-4 max-w-xs truncate" title={task.action}>
+                      {task.action}
+                    </td>
+                    <td className="p-4 font-semibold text-xs text-slate-500">
+                      {task.frequency}
+                    </td>
+                    <td className="p-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          task.status === "OVERDUE"
+                            ? "bg-red-50 text-red-700 border border-red-100"
+                            : task.status === "DUE_SOON"
+                              ? "bg-amber-50 text-amber-700 border border-amber-100"
+                              : task.status === "COMPLETED"
+                                ? "bg-green-50 text-green-700 border border-green-100"
+                                : "bg-blue-50 text-blue-700 border border-blue-100"
+                        }`}
+                      >
+                        {task.status === "OVERDUE" && (
+                          <AlertCircle className="w-3 h-3" />
+                        )}
+                        {task.status === "DUE_SOON" && (
+                          <Clock className="w-3 h-3" />
+                        )}
+                        {task.status === "COMPLETED" && (
+                          <CheckCircle2 className="w-3 h-3" />
+                        )}
+                        {task.status.replace("_", " ")}
+                      </span>
+                    </td>
+                    <td className="p-4 whitespace-nowrap font-medium text-xs">
+                      {task.next_due_at
+                        ? new Date(task.next_due_at).toLocaleDateString("ro-RO")
+                        : "-"}
+                    </td>
+                    <td className="p-4 text-right whitespace-nowrap space-x-1">
+                      <button
+                        onClick={() => setSelectedTask(task)}
+                        className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                        title="View Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleOpenCompleteModal(task)}
+                        disabled={actionLoadingId === task.id}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
+                      >
+                        Complete PM
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {/* Pagination Section */}
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-slate-500">
+            Showing{" "}
+            <span className="font-semibold">{paginatedTasks.length}</span> of{" "}
+            <span className="font-semibold">{filteredTasks.length}</span> items
+          </p>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage === 1 || loading}
+              className="p-2 border rounded-lg bg-white disabled:opacity-40"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-medium text-slate-700">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              disabled={currentPage === totalPages || loading}
+              className="p-2 border rounded-lg bg-white disabled:opacity-40"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Existing View Task Details Modal */}
       {selectedTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden text-slate-200">
-            {/* Modal Header */}
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-              <div className="flex items-center gap-2">
-                <Wrench className="h-4 w-4 text-indigo-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-wider">
-                  Detalii Sarcină Mentenanță
-                </h3>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border">
+            <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
+              <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-blue-600" /> PM Task
+                Specifications
+              </h3>
               <button
                 onClick={() => setSelectedTask(null)}
-                className="p-1 text-slate-500 hover:text-white rounded-lg bg-slate-950 border border-slate-800/80 hover:bg-slate-800 transition-colors"
+                className="text-slate-400 hover:text-slate-600"
               >
-                <X className="h-4 w-4" />
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-3 text-sm">
+              <p>
+                <strong>Tool Number:</strong> {selectedTask.tool_number}
+              </p>
+              <p>
+                <strong>Equipment:</strong> {selectedTask.equipment}
+              </p>
+              <p>
+                <strong>Sub Equipment:</strong>{" "}
+                {selectedTask.sub_equipment || "-"}
+              </p>
+              <p>
+                <strong>Action required:</strong> {selectedTask.action}
+              </p>
+              <p>
+                <strong>Frequency:</strong> {selectedTask.frequency}
+              </p>
+              <p>
+                <strong>Part Reference:</strong>{" "}
+                {selectedTask.part_reference || "-"}
+              </p>
+              <p>
+                <strong>Est. Minutes:</strong>{" "}
+                {selectedTask.estimated_minutes || "-"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NOUL MODAL DE DETALII CLOSING & AUDIT (COMPLETE PM) --- */}
+      {isCompleteModalOpen && taskToComplete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col animate-in zoom-in-95 duration-150">
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+              <div className="flex items-center gap-2 text-slate-900 font-semibold">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                <span>Execution Details & Close PM</span>
+              </div>
+              <button
+                onClick={() =>
+                  !actionLoadingId && setIsCompleteModalOpen(false)
+                }
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50"
+                disabled={!!actionLoadingId}
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    Mașină / Utilaj
-                  </span>
-                  <p className="text-sm font-black text-white mt-0.5">
-                    {selectedTask.tool_number}
+            <form
+              onSubmit={handleCompleteTaskSubmit}
+              className="flex-1 flex flex-col"
+            >
+              <div className="p-6 space-y-4 flex-1">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1 text-slate-600">
+                  <p>
+                    <strong>Equipment:</strong> {taskToComplete.equipment} (
+                    {taskToComplete.tool_number})
+                  </p>
+                  <p className="line-clamp-2">
+                    <strong>Action:</strong> {taskToComplete.action}
                   </p>
                 </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    Status
-                  </span>
-                  <div className="mt-1">
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${getStatusStyle(selectedTask.status)}`}
-                    >
-                      {selectedTask.status}
-                    </span>
+
+                {modalError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                    <span>{modalError}</span>
                   </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    Technician <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={selectedTechId}
+                    onChange={(e) => {
+                      setSelectedTechId(e.target.value);
+                      if (e.target.value) setModalError("");
+                    }}
+                    className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                    disabled={!!actionLoadingId}
+                  >
+                    <option value="">-- Select Technician --</option>
+                    {technicians.map((tech) => (
+                      <option key={tech.id} value={tech.id}>
+                        {tech.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    Remarks / Comments{" "}
+                    <span className="text-slate-400 font-normal">
+                      (Optional)
+                    </span>
+                  </label>
+                  <textarea
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Adaugă detalii relevante despre intervenție..."
+                    rows={3}
+                    className="w-full p-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+                    disabled={!!actionLoadingId}
+                  />
                 </div>
               </div>
 
-              <div className="border-t border-slate-800/60 pt-3">
-                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  Subansamblu / Echipament
-                </span>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5">
-                  {selectedTask.equipment}{" "}
-                  <span className="text-slate-500">
-                    ({selectedTask.sub_equipment || "-"})
-                  </span>
-                </p>
+              <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCompleteModalOpen(false)}
+                  disabled={!!actionLoadingId}
+                  className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!!actionLoadingId}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow transition-colors flex items-center gap-1.5"
+                >
+                  {actionLoadingId ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save & Log PM"
+                  )}
+                </button>
               </div>
-
-              <div className="border-t border-slate-800/60 pt-3">
-                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  Acțiune / Operație Mentenanță
-                </span>
-                <p className="text-xs text-slate-300 mt-1 bg-slate-950 p-2.5 border border-slate-800/80 rounded-lg leading-relaxed">
-                  {selectedTask.action}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-800/60 pt-3">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                    <Layers className="h-3 w-3 text-indigo-400" /> Piesă de
-                    Schimb (Ref)
-                  </span>
-                  <p className="text-xs font-bold text-indigo-300 font-mono mt-1">
-                    {selectedTask.part_reference || "Nu este specificat"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                    <Hourglass className="h-3 w-3 text-amber-400" /> Timp
-                    Estimat
-                  </span>
-                  <p className="text-xs font-black text-white mt-1">
-                    {selectedTask.estimated_minutes
-                      ? `${selectedTask.estimated_minutes} minute`
-                      : "Nespecificat"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-800/60 pt-3 text-[11px]">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    Ultima Finalizare
-                  </span>
-                  <p className="text-slate-400 mt-0.5">
-                    {formatDate(selectedTask.last_completed_at)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    Următorul Termen
-                  </span>
-                  <p className="text-white font-bold mt-0.5">
-                    {formatDate(selectedTask.next_due_at)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-3 bg-slate-950/40 border-t border-slate-800 flex justify-end">
-              <button
-                onClick={() => setSelectedTask(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl transition-colors"
-              >
-                Închide
-              </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
