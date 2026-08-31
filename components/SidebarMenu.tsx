@@ -19,6 +19,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   History,
+  Droplets,
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -48,6 +49,7 @@ export default function SidebarMenu({
       "/improvements",
       "/preventive-maintenance",
       "/pm-history",
+      "/fluid-management",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin/matrix"].includes(pathname),
@@ -177,6 +179,14 @@ export default function SidebarMenu({
             <Link href="/improvements" className={linkClass("/improvements")}>
               <Lightbulb className={iconClass("/improvements")} />
               <span className="truncate">{t.improvements}</span>
+            </Link>
+
+            <Link
+              href="/fluid-management"
+              className={linkClass("/fluid-management")}
+            >
+              <Droplets className={iconClass("/fluid-management")} />
+              <span>Fluid Management</span>
             </Link>
           </div>
         )}
