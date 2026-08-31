@@ -324,13 +324,15 @@ export default function PreventiveMaintenanceDashboard() {
   };
 
   const filteredTasks = useMemo(() => {
+    const search = searchTerm.toLowerCase();
+
     return tasks
       .filter((task) => {
         const matchesSearch =
-          task.tool_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          task.equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          task.sub_equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          task.action.toLowerCase().includes(searchTerm.toLowerCase());
+          (task.tool_number || "").toLowerCase().includes(search) ||
+          (task.equipment || "").toLowerCase().includes(search) ||
+          (task.sub_equipment || "").toLowerCase().includes(search) ||
+          (task.action || "").toLowerCase().includes(search);
 
         const matchesStatus =
           statusFilter === "ALL" || task.status === statusFilter;
@@ -338,8 +340,9 @@ export default function PreventiveMaintenanceDashboard() {
         return matchesSearch && matchesStatus;
       })
       .sort((a, b) => {
-        const valA = a[sortColumn] || "";
-        const valB = b[sortColumn] || "";
+        const valA = String(a[sortColumn] || "");
+        const valB = String(b[sortColumn] || "");
+
         if (valA < valB) return sortDirection === "asc" ? -1 : 1;
         if (valA > valB) return sortDirection === "asc" ? 1 : -1;
         return 0;
