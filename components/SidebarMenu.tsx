@@ -20,6 +20,7 @@ import {
   ClipboardCheck,
   History,
   Droplets,
+  KeyRound,
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -50,6 +51,7 @@ export default function SidebarMenu({
       "/preventive-maintenance",
       "/pm-history",
       "/fluid-management",
+      "/access-management",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin/matrix"].includes(pathname),
@@ -187,6 +189,13 @@ export default function SidebarMenu({
             >
               <Droplets className={iconClass("/fluid-management")} />
               <span>Fluid Management</span>
+            </Link>
+
+            <Link
+              href="/access-management"
+              className={linkClass("/access-management")}
+            >
+              <KeyRound className={iconClass("/access-management")} />
             </Link>
           </div>
         )}
