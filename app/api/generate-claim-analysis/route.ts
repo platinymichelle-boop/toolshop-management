@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
     // 3. Inițializăm modelul Gemini cu responseMimeType obligatoriu în format JSON
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.6-flash",
       generationConfig: {
         responseMimeType: "application/json",
       },
