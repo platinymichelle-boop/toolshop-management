@@ -52,6 +52,7 @@ export default function SidebarMenu({
       "/pm-history",
       "/fluid-management",
       "/access-management",
+      "/customer-claims",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin/matrix"].includes(pathname),
@@ -113,6 +114,14 @@ export default function SidebarMenu({
             <Link href="/dashboard" className={linkClass("/dashboard")}>
               <LayoutDashboard className={iconClass("/dashboard")} />
               <span className="truncate">{t.dashboard}</span>
+            </Link>
+
+            <Link
+              href="/customer-claims"
+              className={linkClass("/customer-claims")}
+            >
+              <ClipboardCheck className={iconClass("/customer-claims")} />
+              <span className="truncate">Customer Claims</span>
             </Link>
 
             {showTools && (
