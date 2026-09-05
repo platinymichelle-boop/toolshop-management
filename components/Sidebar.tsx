@@ -6,23 +6,24 @@ import { useLanguage } from "@/context/LanguageContext";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import LanguageToggle from "./LanguageToggle";
-import SidebarMenu from "./SidebarMenu";
 import {
   LayoutDashboard,
   Factory,
   Wrench,
+  AlertTriangle,
   Package,
   Users,
   Lightbulb,
-  AlertTriangle,
   BarChart3,
   FileBarChart2,
   Settings,
   PlusCircle,
   Cpu,
-  Clock,
   ShieldAlert,
   LogOut,
+  ChevronRight,
+  Menu,
+  X,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -43,7 +44,7 @@ export default function Sidebar() {
     setIsOpen(false);
   }, [pathname]);
 
-  // 3. Încărcarea KPI-urilor din Supabase în timp real
+  // Încărcarea KPI-urilor în timp real
   useEffect(() => {
     async function fetchSidebarKPIs() {
       try {
@@ -78,160 +79,241 @@ export default function Sidebar() {
   }, [pathname]);
 
   const customLogout = async () => {
-    if (!window.confirm(t.logoutConfirm)) return;
+    if (!window.confirm(t?.logoutConfirm || "Sigur doriți să vă deconectați?"))
+      return;
     await handleLogout();
   };
 
-  // 1 & 2. Definirea structurii meniului enterprise corectată conform directoarelor app/
+  // Structura meniului cu KPI-uri mapate dinamic
   const navigationSections = [
     {
-      title: "OPERATIONS",
+      title: "Operations",
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Equipments", href: "/tools", icon: Factory }, // Corectat din /tool în /tools
-        { name: "Repairs", href: "/repairs", icon: Wrench },
-        { name: "Breakdown Tracker", href: "/breakdown", icon: AlertTriangle }, // Corectat din /breakdown-tracker în /breakdown
+        {
+          name: "Equipments",
+          href: "/tools",
+          icon: Factory,
+          badge: kpis.machinesCount,
+          badgeType: "neutral",
+        },
+        {
+          name: "Repairs",
+          href: "/repairs",
+          icon: Wrench,
+          badge: kpis.openRepairs,
+          badgeType: "warning",
+        },
+        {
+          name: "Breakdown Tracker",
+          href: "/breakdown",
+          icon: AlertTriangle,
+          badge: kpis.openBreakdowns,
+          badgeType: "danger",
+        },
       ],
     },
     {
-      title: "MAINTENANCE",
+      title: "Maintenance",
       items: [
-        { name: "Spare Parts", href: "/spare-parts", icon: Package },
-        { name: "Technical Team", href: "/technicians", icon: Users }, // Corectat din /technical-team în /technicians
+        {
+          name: "Spare Parts",
+          href: "/spare-parts",
+          icon: Package,
+          badge: kpis.lowStockParts > 0 ? kpis.lowStockParts : null,
+          badgeType: "danger",
+        },
+        { name: "Technical Team", href: "/technicians", icon: Users },
         { name: "Improvements", href: "/improvements", icon: Lightbulb },
       ],
     },
     {
-      title: "ANALYTICS",
+      title: "Analytics",
       items: [
         {
           name: "Breakdown Analytics",
           href: "/breakdown/dashboard",
           icon: BarChart3,
-        }, // Corectat din /breakdown-analytics în /breakdown/dashboard
+        },
         { name: "Reports", href: "/reports", icon: FileBarChart2 },
       ],
     },
     {
-      title: "ADMINISTRATION",
-      items: [{ name: "Settings", href: "/admin/matrix", icon: Settings }], // Corectat pentru a mapa corect setările tale administrative
+      title: "Administration",
+      items: [{ name: "Settings", href: "/admin/matrix", icon: Settings }],
     },
   ];
   return (
     <>
-      {/* Buton Hamburger: vizibil DOAR pe mobil */}
+      {/* Buton Hamburger pe Mobil */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white shadow-lg focus:outline-none"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2.5 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-800 text-slate-200 shadow-xl active:scale-95 transition-transform"
       >
-        {isOpen ? "✕" : "☰"}
+        {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
-      {/* Fundal întunecat (Overlay) pe mobil */}
+      {/* Overlay Mobil */}
       {isOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/60 z-30 backdrop-blur-sm transition-opacity"
+          className="lg:hidden fixed inset-0 bg-slate-950/60 z-40 backdrop-blur-sm transition-opacity duration-300"
           onClick={() => setIsOpen(false)}
         />
       )}
 
-      {/* Structura principală Sidebar */}
+      {/* Sidebar Principal */}
       <aside
         className={`
-        fixed inset-y-0 left-0 z-30 w-64 bg-slate-950 border-r border-slate-800/80 
-        flex flex-col justify-between h-full text-slate-300 shadow-2xl shrink-0
-        transition-transform duration-300 ease-in-out lg:static lg:translate-x-0
-        ${isOpen ? "translate-x-0" : "-translate-x-full"}
-      `}
+          fixed inset-y-0 left-0 z-40 w-64 bg-slate-950 border-r border-slate-900
+          flex flex-col justify-between h-full text-slate-400 shadow-2xl shrink-0
+          transition-transform duration-300 ease-in-out lg:sticky lg:translate-x-0
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
       >
         <div className="flex flex-col min-h-0 flex-1">
-          {/* Logo Brand */}
-          <div className="p-5 border-b border-slate-800/60 flex items-center gap-2.5 bg-slate-950">
-            <div className="bg-indigo-600 text-white p-2 rounded-xl shadow-md flex items-center justify-center">
-              <Cpu className="h-5 w-5 animate-pulse" />
+          {/* Logo Brand Header */}
+          <div className="p-6 border-b border-slate-900 flex items-center gap-3 bg-slate-950/50 backdrop-blur-md">
+            <div className="bg-gradient-to-tr from-indigo-600 to-violet-500 text-white p-2 rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center">
+              <Cpu className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-sm font-black text-white tracking-tight uppercase">
+              <h1 className="text-sm font-bold text-slate-100 tracking-wide uppercase">
                 Metal Stamping
               </h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+              <p className="text-[10px] text-indigo-400/80 font-semibold tracking-widest uppercase">
                 Enterprise CMS
               </p>
             </div>
           </div>
 
-          {/* Zona de Navigație Structurată */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-5">
+          {/* Zona Scrollabilă de Navigație */}
+          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-7 scrollbar-thin scrollbar-thumb-slate-800">
             {isLoading ? (
-              <div className="space-y-4 animate-pulse p-2">
-                <div className="h-4 bg-slate-800 rounded w-1/3"></div>
-                <div className="h-8 bg-slate-800 rounded-lg"></div>
+              <div className="space-y-6 animate-pulse">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="h-3 bg-slate-900 rounded w-1/4 mb-3"></div>
+                    <div className="h-9 bg-slate-900 rounded-lg w-full"></div>
+                    <div className="h-9 bg-slate-900 rounded-lg w-full"></div>
+                  </div>
+                ))}
               </div>
             ) : (
-              /* Meniul dinamic reconfigurat */
-              <SidebarMenu permissions={permissions} pathname={pathname} />
+              // Randerare Secțiuni Meniu
+              <nav className="space-y-7">
+                {navigationSections.map((section) => (
+                  <div key={section.title} className="space-y-1.5">
+                    <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-widest uppercase">
+                      {section.title}
+                    </h3>
+                    <ul className="space-y-1">
+                      {section.items.map((item) => {
+                        const isActive = pathname === item.href;
+                        return (
+                          <li key={item.name}>
+                            <Link
+                              href={item.href}
+                              className={`
+                                group flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200
+                                ${
+                                  isActive
+                                    ? "bg-gradient-to-r from-slate-900 to-slate-900/50 border border-slate-800 text-indigo-400 font-semibold shadow-inner"
+                                    : "hover:bg-slate-900/50 hover:text-slate-200 text-slate-400 border border-transparent"
+                                }
+                              `}
+                            >
+                              <div className="flex items-center gap-3">
+                                <item.icon
+                                  className={`h-4 w-4 transition-transform group-hover:scale-110 duration-200 ${isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"}`}
+                                />
+                                <span>{item.name}</span>
+                              </div>
+
+                              {item.badge !== undefined &&
+                                item.badge !== null && (
+                                  <span
+                                    className={`
+                                  text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wide transition-all shadow-sm
+                                  ${item.badgeType === "danger" ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" : ""}
+                                  ${item.badgeType === "warning" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : ""}
+                                  ${item.badgeType === "neutral" ? "bg-slate-800 text-slate-400 border border-slate-700/50" : ""}
+                                `}
+                                  >
+                                    {item.badge}
+                                  </span>
+                                )}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </nav>
             )}
 
-            {/* Secțiunea Enterprise de Acțiuni Rapide (Quick Actions) */}
-            <div className="pt-2 border-t border-slate-900/60 space-y-1.5">
-              <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
-                QUICK ACTIONS
+            {/* Quick Actions (Acțiuni Rapide) */}
+            <div className="pt-4 border-t border-slate-900 space-y-2">
+              <h3 className="px-3 text-[10px] font-bold text-slate-500 tracking-widest uppercase">
+                Quick Actions
               </h3>
-              <div className="px-2 space-y-1">
-                <Link
-                  href="/repairs?action=new"
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-800/60 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white transition-all"
-                >
-                  <PlusCircle className="h-3.5 w-3.5 text-emerald-500" />
-                  <span>New Repair</span>
-                </Link>
-                {/* Corectat link din /breakdown-tracker în /breakdown */}
-                <Link
-                  href="/breakdown?action=new"
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-800/60 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white transition-all"
-                >
-                  <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
-                  <span>New Breakdown</span>
-                </Link>
-                <Link
-                  href="/spare-parts?action=add"
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-800/60 rounded-lg text-[11px] font-bold text-slate-300 hover:text-white transition-all"
-                >
-                  <Clock className="h-3.5 w-3.5 text-indigo-500" />
-                  <span>Add Spare Part</span>
-                </Link>
+              <div className="space-y-1.5">
+                {[
+                  {
+                    href: "/repairs?action=new",
+                    text: "New Repair",
+                    color:
+                      "hover:border-emerald-500/30 text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 border-transparent",
+                    icon: PlusCircle,
+                  },
+                  {
+                    href: "/breakdown?action=new",
+                    text: "New Breakdown",
+                    color:
+                      "hover:border-rose-500/30 text-rose-400 bg-rose-500/5 hover:bg-rose-500/10 border-transparent",
+                    icon: ShieldAlert,
+                  },
+                ].map((action, idx) => (
+                  <Link
+                    key={idx}
+                    href={action.href}
+                    className={`w-full flex items-center justify-between px-3 py-2 border rounded-xl text-xs font-semibold transition-all duration-200 ${action.color}`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <action.icon className="h-4 w-4" />
+                      <span>{action.text}</span>
+                    </div>
+                    <ChevronRight className="h-3 w-3 opacity-60" />
+                  </Link>
+                ))}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Subsol Îmbunătățit (Footer) - Profil, Limbă și Versiune */}
-        <div className="p-3 border-t border-slate-800/60 bg-slate-950/90 space-y-3 shrink-0">
+        {/* Footer: User Profile, Limba & Logout */}
+        <div className="p-4 border-t border-slate-900 bg-slate-950/80 backdrop-blur-md space-y-4 shrink-0">
           <LanguageToggle />
 
           {userEmail && (
-            <div className="px-2 py-1.5 bg-slate-900/30 rounded-xl border border-slate-900/40 flex flex-col">
-              <span className="text-xs font-bold text-slate-200 truncate">
-                {userEmail.split("@")[0]}
-              </span>
-              <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider mt-0.5">
-                {permissions?.role || "Operator"}
-              </span>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/40 border border-slate-900/60">
+              <div className="flex flex-col min-w-0 px-1">
+                <span className="text-xs font-semibold text-slate-200 truncate">
+                  {userEmail.split("@")[0]}
+                </span>
+                <span className="text-[10px] text-slate-500 truncate">
+                  {userEmail}
+                </span>
+              </div>
+              <button
+                onClick={customLogout}
+                title={t?.logout || "Deconectare"}
+                className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           )}
-
-          <div className="flex items-center justify-between gap-2 px-1">
-            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">
-              v2.4.0-PRO
-            </span>
-            <button
-              onClick={customLogout}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-all border border-rose-500/10"
-            >
-              <LogOut className="h-3 w-3" />
-              <span>{t.logout || "Logout"}</span>
-            </button>
-          </div>
         </div>
       </aside>
     </>

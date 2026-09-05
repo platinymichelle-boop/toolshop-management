@@ -41,9 +41,13 @@ export default function SidebarMenu({
 
   // Stări pentru controlul deschiderii fiecărei secțiuni (Acordeon)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    OPERATIONS: ["/dashboard", "/tools", "/repairs", "/breakdown"].includes(
-      pathname,
-    ),
+    OPERATIONS: [
+      "/dashboard",
+      "/tools",
+      "/repairs",
+      "/breakdown",
+      "/customer-claims",
+    ].includes(pathname),
     MAINTENANCE: [
       "/spare-parts",
       "/technicians",
@@ -52,7 +56,6 @@ export default function SidebarMenu({
       "/pm-history",
       "/fluid-management",
       "/access-management",
-      "/customer-claims",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin/matrix"].includes(pathname),
@@ -68,11 +71,11 @@ export default function SidebarMenu({
   const linkClass = (path: string) => {
     const isActive = pathname === path;
     return `
-      group relative flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all duration-200 ml-2
+      group relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ml-2 border
       ${
         isActive
-          ? "bg-indigo-600/10 text-white font-extrabold border-l-2 border-indigo-500 pl-2.5 rounded-l-none"
-          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+          ? "bg-gradient-to-r from-slate-900 to-slate-900/50 border-slate-800 text-indigo-400 font-semibold shadow-inner"
+          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50 border-transparent"
       }
     `;
   };
@@ -80,37 +83,36 @@ export default function SidebarMenu({
   const iconClass = (path: string) => {
     const isActive = pathname === path;
     return `h-4 w-4 shrink-0 transition-transform group-hover:scale-110 duration-200 ${
-      isActive ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-400"
+      isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
     }`;
   };
 
   const sectionButtonClass = (isOpen: boolean) => `
-    w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[11px] font-black tracking-wider uppercase transition-colors
+    w-full flex items-center justify-between px-3 py-2 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all duration-200
     ${
       isOpen
-        ? "bg-slate-900 text-slate-200 border border-slate-800/40"
-        : "text-slate-500 hover:text-slate-300 hover:bg-slate-900/30"
+        ? "bg-slate-900/40 text-slate-300 border border-slate-900"
+        : "text-slate-500 hover:text-slate-300 hover:bg-slate-900/20 border border-transparent"
     }
   `;
-
   return (
-    <div className="space-y-3">
-      {/* Secțiunea OPERATIONS */}
+    <div className="space-y-4">
+      {/* Continuare Secțiunea OPERATIONS */}
       <div className="space-y-1">
         <button
           onClick={() => toggleSection("OPERATIONS")}
           className={sectionButtonClass(openSections.OPERATIONS)}
         >
-          <span>OPERATIONS</span>
+          <span>Operations</span>
           {openSections.OPERATIONS ? (
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="h-3.5 w-3.5 opacity-70" />
           ) : (
-            <ChevronRight className="h-3 w-3" />
+            <ChevronRight className="h-3.5 w-3.5 opacity-70" />
           )}
         </button>
 
         {openSections.OPERATIONS && (
-          <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+          <div className="space-y-1 pt-1 transition-all duration-200">
             <Link href="/dashboard" className={linkClass("/dashboard")}>
               <LayoutDashboard className={iconClass("/dashboard")} />
               <span className="truncate">{t.dashboard}</span>
@@ -157,21 +159,21 @@ export default function SidebarMenu({
           onClick={() => toggleSection("MAINTENANCE")}
           className={sectionButtonClass(openSections.MAINTENANCE)}
         >
-          <span>MAINTENANCE</span>
+          <span>Maintenance</span>
           {openSections.MAINTENANCE ? (
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="h-3.5 w-3.5 opacity-70" />
           ) : (
-            <ChevronRight className="h-3 w-3" />
+            <ChevronRight className="h-3.5 w-3.5 opacity-70" />
           )}
         </button>
 
         {openSections.MAINTENANCE && (
-          <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+          <div className="space-y-1 pt-1 transition-all duration-200">
             <Link
               href="/preventive-maintenance"
               className={linkClass("/preventive-maintenance")}
             >
-              {/* Notă: Poți adăuga o iconiță aici dacă dorești pentru consistență */}
+              <Wrench className={iconClass("/preventive-maintenance")} />
               <span className="truncate">Preventive Maintenance</span>
             </Link>
 
@@ -197,7 +199,7 @@ export default function SidebarMenu({
               className={linkClass("/fluid-management")}
             >
               <Droplets className={iconClass("/fluid-management")} />
-              <span>Fluid Management</span>
+              <span className="truncate">Fluid Management</span>
             </Link>
 
             <Link
@@ -205,7 +207,7 @@ export default function SidebarMenu({
               className={linkClass("/access-management")}
             >
               <KeyRound className={iconClass("/access-management")} />
-              <span>Access Management</span>
+              <span className="truncate">Access Management</span>
             </Link>
           </div>
         )}
@@ -218,16 +220,16 @@ export default function SidebarMenu({
             onClick={() => toggleSection("ANALYTICS")}
             className={sectionButtonClass(openSections.ANALYTICS)}
           >
-            <span>ANALYTICS</span>
+            <span>Analytics</span>
             {openSections.ANALYTICS ? (
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
             ) : (
-              <ChevronRight className="h-3 w-3" />
+              <ChevronRight className="h-3.5 w-3.5 opacity-70" />
             )}
           </button>
 
           {openSections.ANALYTICS && (
-            <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+            <div className="space-y-1 pt-1 transition-all duration-200">
               <Link
                 href="/breakdown/dashboard"
                 className={linkClass("/breakdown/dashboard")}
@@ -252,16 +254,16 @@ export default function SidebarMenu({
             onClick={() => toggleSection("ADMINISTRATION")}
             className={sectionButtonClass(openSections.ADMINISTRATION)}
           >
-            <span>ADMINISTRATION</span>
+            <span>Administration</span>
             {openSections.ADMINISTRATION ? (
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
             ) : (
-              <ChevronRight className="h-3 w-3" />
+              <ChevronRight className="h-3.5 w-3.5 opacity-70" />
             )}
           </button>
 
           {openSections.ADMINISTRATION && (
-            <div className="space-y-0.5 pt-0.5 transition-all duration-200">
+            <div className="space-y-1 pt-1 transition-all duration-200">
               <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
                 <Settings className={iconClass("/admin/matrix")} />
                 <span className="truncate">Matrix Configuration</span>
