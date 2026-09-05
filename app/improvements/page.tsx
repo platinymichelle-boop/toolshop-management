@@ -55,7 +55,7 @@ export default function ImprovementsPage() {
 
     const interval = setInterval(() => {
       loadImprovements();
-    }, 3000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, []);
