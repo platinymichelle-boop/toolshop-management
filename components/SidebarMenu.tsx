@@ -205,6 +205,7 @@ export default function SidebarMenu({
               className={linkClass("/access-management")}
             >
               <KeyRound className={iconClass("/access-management")} />
+              <span>Access Management</span>
             </Link>
           </div>
         )}
