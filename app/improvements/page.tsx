@@ -13,6 +13,7 @@ interface Improvement {
   image_before_url: string | null;
   image_after_url: string | null;
   system: string;
+  estimated_saving: number;
 }
 
 export default function ImprovementsPage() {
@@ -23,6 +24,7 @@ export default function ImprovementsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editStatus, setEditStatus] = useState("Proposed");
   const [system, setSystem] = useState("Mechanical");
+  const [estimatedSaving, setEstimatedSaving] = useState<number>(0);
 
   // State-uri pentru fișierele atașate
   const [fileBefore, setFileBefore] = useState<File | null>(null);
@@ -99,6 +101,7 @@ export default function ImprovementsPage() {
         status: "Proposed",
         image_before_url: imgBeforeUrl,
         image_after_url: imgAfterUrl,
+        estimated_saving: estimatedSaving,
       });
 
       if (error) throw error;
@@ -413,98 +416,170 @@ export default function ImprovementsPage() {
       </div>
 
       {/* Formular de adăugare */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm max-w-3xl">
-        <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-          <span>💡</span> Lansează o fișă de îmbunătățire continuă
-        </h2>
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Formular */}
+        <div className="xl:col-span-3 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <span>💡</span> Lansează o fișă de îmbunătățire continuă
+          </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500">
+                  Titlu Propunere / Obiectiv
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Identificare vizuală conectori test"
+                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-blue-500 text-slate-900"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500">
+                  Arie / Departament
+                </label>
+                <select
+                  value={system}
+                  onChange={(e) => setSystem(e.target.value)}
+                  className="border border-gray-200 rounded-lg p-2.5 text-sm bg-white text-slate-900"
+                >
+                  <option value="Mechanical">Mechanical</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Hydraulic">Hydraulic</option>
+                  <option value="Pneumatic">Pneumatic</option>
+                </select>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-500">
-                Titlu Propunere / Obiectiv
+                Descrierea Situației actuale și Soluția propusă
               </label>
-              <input
-                type="text"
+              <textarea
                 required
-                placeholder="Ex: Identificare vizuală conectori test"
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-blue-500 text-slate-900"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                rows={3}
+                placeholder="Care era problema? Ce s-a modificat pentru a crește productivitatea sau siguranța?"
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-blue-500 w-full text-slate-900"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-500">
-                Arie / Departament
+                Cost Reduction Estimat (€ / an)
               </label>
-              <select
-                value={system}
-                onChange={(e) => setSystem(e.target.value)}
-              >
-                <option value="Mechanical">Mechanical</option>
 
-                <option value="Electrical">Electrical</option>
-
-                <option value="Hydraulic">Hydraulic</option>
-
-                <option value="Pneumatic">Pneumatic</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">
-              Descrierea Situației actuale și Soluția propusă
-            </label>
-            <textarea
-              required
-              rows={3}
-              placeholder="Care era problema? Ce s-a modificat pentru a crește productivitatea sau siguranța?"
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-blue-500 w-full text-slate-900"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          {/* Secțiune Upload Imagini Before / After */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-            <div className="p-3 border border-dashed border-gray-200 rounded-xl bg-slate-50/50">
-              <label className="text-xs font-bold text-slate-700 block mb-1">
-                📸 Foto SITUAȚIE INIȚIALĂ (Before)
-              </label>
               <input
-                type="file"
-                accept="image/*"
-                className="text-xs w-full text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                onChange={(e) =>
-                  e.target.files && setFileBefore(e.target.files[0])
-                }
+                type="number"
+                min="0"
+                placeholder="Ex: 1500"
+                className="border border-gray-200 rounded-lg p-2.5 text-sm text-slate-900"
+                value={estimatedSaving}
+                onChange={(e) => setEstimatedSaving(Number(e.target.value))}
               />
             </div>
 
-            <div className="p-3 border border-dashed border-gray-200 rounded-xl bg-slate-50/50">
-              <label className="text-xs font-bold text-slate-700 block mb-1">
-                ✨ Foto DUPĂ ÎMBUNĂTĂȚIRE (After)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                className="text-xs w-full text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
-                onChange={(e) =>
-                  e.target.files && setFileAfter(e.target.files[0])
-                }
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="p-3 border border-dashed border-gray-200 rounded-xl bg-slate-50/50">
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  📸 Foto SITUAȚIE INIȚIALĂ (Before)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="text-xs w-full text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                  onChange={(e) =>
+                    e.target.files && setFileBefore(e.target.files[0])
+                  }
+                />
+              </div>
+
+              <div className="p-3 border border-dashed border-gray-200 rounded-xl bg-slate-50/50">
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  ✨ Foto DUPĂ ÎMBUNĂTĂȚIRE (After)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="text-xs w-full text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                  onChange={(e) =>
+                    e.target.files && setFileAfter(e.target.files[0])
+                  }
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {isSaving ? "Se salvează fișa..." : "Înregistrează Idee Kaizen"}
+            </button>
+          </form>
+        </div>
+
+        {/* KPI PANEL */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <h3 className="text-base font-bold text-slate-800 mb-4">
+            💰 Cost Reduction
+          </h3>
+
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-slate-50 border">
+              <div className="text-xs text-gray-500">Total Improvements</div>
+              <div className="text-3xl font-black text-slate-800">
+                {ideas.length}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-green-50 border border-green-100">
+              <div className="text-xs text-green-700">Implemented</div>
+              <div className="text-3xl font-black text-green-700">
+                {ideas.filter((i) => i.status === "Implemented").length}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-100">
+              <div className="text-xs text-amber-700">Completion Rate</div>
+              <div className="text-3xl font-black text-amber-700">
+                {ideas.length > 0
+                  ? Math.round(
+                      (ideas.filter((i) => i.status === "Implemented").length /
+                        ideas.length) *
+                        100,
+                    )
+                  : 0}
+                %
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+              <div className="text-xs text-indigo-700">
+                Estimated Cost Reduction
+              </div>
+              <div className="text-3xl font-black text-indigo-700">
+                €
+                {ideas
+                  .filter((i) => i.status === "Implemented")
+                  .reduce((sum, i) => sum + (i.estimated_saving || 0), 0)
+                  .toLocaleString()}
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-400 border-t pt-3">
+              Assumption:
+              <br />
+              500 € saving / implemented improvement
             </div>
           </div>
-
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition-colors shadow-sm"
-          >
-            {isSaving ? "Se salvează fișa..." : "Înregistrează Idee Kaizen"}
-          </button>
-        </form>
+        </div>
       </div>
       {/* Registrul de Fișe Raportate */}
       <div className="space-y-6">
@@ -593,6 +668,10 @@ export default function ImprovementsPage() {
                       Analiză Impact:
                     </p>
                     <p className="leading-relaxed">{idea.description}</p>
+                    <div className="mt-3 inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 text-xs font-bold">
+                      💰 Cost Reduction: €
+                      {(idea.estimated_saving || 0).toLocaleString()} / an
+                    </div>
                   </div>
 
                   {/* Imaginile Comparative */}
