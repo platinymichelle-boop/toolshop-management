@@ -52,6 +52,12 @@ export default function ImprovementsPage() {
 
   useEffect(() => {
     loadImprovements();
+
+    const interval = setInterval(() => {
+      loadImprovements();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Funcție helper pentru upload fișiere în bucket-ul 'improvement_images'
