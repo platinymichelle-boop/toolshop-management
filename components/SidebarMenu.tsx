@@ -21,6 +21,7 @@ import {
   History,
   Droplets,
   KeyRound,
+  Wallet, // Adăugat pentru Budget Planner
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -39,7 +40,7 @@ export default function SidebarMenu({
   const showParts = isAdmin || permissions?.can_view_parts === true;
   const showReports = isAdmin || permissions?.can_view_reports === true;
 
-  // Stări pentru controlul deschiderii fiecărei secțiuni (Acordeon)
+  // Stări pentru controlul deschiderii fiecărei secțiuni (Acordeon) optimizate cu noile rute
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     OPERATIONS: [
       "/dashboard",
@@ -47,6 +48,7 @@ export default function SidebarMenu({
       "/repairs",
       "/breakdown",
       "/customer-claims",
+      "/live-factory",
     ].includes(pathname),
     MAINTENANCE: [
       "/spare-parts",
@@ -55,10 +57,10 @@ export default function SidebarMenu({
       "/preventive-maintenance",
       "/pm-history",
       "/fluid-management",
-      "/access-management",
+      "/budget-planner",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
-    ADMINISTRATION: ["/admin/matrix"].includes(pathname),
+    ADMINISTRATION: ["/admin", "/access-management"].includes(pathname),
   });
 
   const toggleSection = (section: string) => {
@@ -97,7 +99,7 @@ export default function SidebarMenu({
   `;
   return (
     <div className="space-y-4">
-      {/* Continuare Secțiunea OPERATIONS */}
+      {/* Secțiunea OPERATIONS */}
       <div className="space-y-1">
         <button
           onClick={() => toggleSection("OPERATIONS")}
@@ -116,6 +118,11 @@ export default function SidebarMenu({
             <Link href="/dashboard" className={linkClass("/dashboard")}>
               <LayoutDashboard className={iconClass("/dashboard")} />
               <span className="truncate">{t.dashboard}</span>
+            </Link>
+
+            <Link href="/live-factory" className={linkClass("/live-factory")}>
+              <Factory className={iconClass("/live-factory")} />
+              <span className="truncate">Factory Monitor</span>
             </Link>
 
             <Link
@@ -144,11 +151,6 @@ export default function SidebarMenu({
               <AlertTriangle className={iconClass("/breakdown")} />
               <span className="truncate">Breakdown Tracker</span>
             </Link>
-
-            <Link href="/live-factory" className={linkClass("/live-factory")}>
-              <Factory className={iconClass("/live-factory")} />
-              <span className="truncate">Factory Monitor</span>
-            </Link>
           </div>
         )}
       </div>
@@ -166,9 +168,15 @@ export default function SidebarMenu({
             <ChevronRight className="h-3.5 w-3.5 opacity-70" />
           )}
         </button>
-
         {openSections.MAINTENANCE && (
           <div className="space-y-1 pt-1 transition-all duration-200">
+            {showParts && (
+              <Link href="/spare-parts" className={linkClass("/spare-parts")}>
+                <Package className={iconClass("/spare-parts")} />
+                <span className="truncate">{t.parts || "Spare Parts"}</span>
+              </Link>
+            )}
+
             <Link
               href="/preventive-maintenance"
               className={linkClass("/preventive-maintenance")}
@@ -203,11 +211,11 @@ export default function SidebarMenu({
             </Link>
 
             <Link
-              href="/access-management"
-              className={linkClass("/access-management")}
+              href="/budget-planner"
+              className={linkClass("/budget-planner")}
             >
-              <KeyRound className={iconClass("/access-management")} />
-              <span className="truncate">Access Management</span>
+              <Wallet className={iconClass("/budget-planner")} />
+              <span className="truncate">Budget Planner</span>
             </Link>
           </div>
         )}
@@ -267,6 +275,14 @@ export default function SidebarMenu({
               <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
                 <Settings className={iconClass("/admin/matrix")} />
                 <span className="truncate">Matrix Configuration</span>
+              </Link>
+
+              <Link
+                href="/access-management"
+                className={linkClass("/access-management")}
+              >
+                <KeyRound className={iconClass("/access-management")} />
+                <span className="truncate">Access Management</span>
               </Link>
             </div>
           )}

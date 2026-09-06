@@ -24,6 +24,11 @@ import {
   ChevronRight,
   Menu,
   X,
+  ClipboardCheck,
+  History,
+  Droplets,
+  KeyRound,
+  Wallet, // Importat pentru o pictogramă dedicată Budget Planner
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -84,12 +89,18 @@ export default function Sidebar() {
     await handleLogout();
   };
 
-  // Structura meniului cu KPI-uri mapate dinamic
+  // Structura meniului actualizată complet cu toate paginile din proiect
   const navigationSections = [
     {
       title: "Operations",
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Factory Monitor", href: "/live-factory", icon: Factory },
+        {
+          name: "Customer Claims",
+          href: "/customer-claims",
+          icon: ClipboardCheck,
+        },
         {
           name: "Equipments",
           href: "/tools",
@@ -123,8 +134,16 @@ export default function Sidebar() {
           badge: kpis.lowStockParts > 0 ? kpis.lowStockParts : null,
           badgeType: "danger",
         },
+        {
+          name: "Preventive Maintenance",
+          href: "/preventive-maintenance",
+          icon: Wrench,
+        },
+        { name: "PM History", href: "/pm-history", icon: History },
         { name: "Technical Team", href: "/technicians", icon: Users },
         { name: "Improvements", href: "/improvements", icon: Lightbulb },
+        { name: "Fluid Management", href: "/fluid-management", icon: Droplets },
+        { name: "Budget Planner", href: "/budget-planner", icon: Wallet },
       ],
     },
     {
@@ -140,7 +159,14 @@ export default function Sidebar() {
     },
     {
       title: "Administration",
-      items: [{ name: "Settings", href: "/admin/matrix", icon: Settings }],
+      items: [
+        { name: "Settings", href: "/admin/matrix", icon: Settings },
+        {
+          name: "Access Management",
+          href: "/access-management",
+          icon: KeyRound,
+        },
+      ],
     },
   ];
   return (
@@ -152,7 +178,6 @@ export default function Sidebar() {
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
-
       {/* Overlay Mobil */}
       {isOpen && (
         <div

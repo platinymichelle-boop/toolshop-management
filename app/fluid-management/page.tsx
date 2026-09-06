@@ -362,12 +362,13 @@ export default function FluidManagementPage() {
           </div>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            {/* PASUL 1: Adaugă proprietatea asChild aici */}
             <DialogTrigger>
-              <Button className="group relative inline-flex items-center justify-center rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:from-emerald-400 hover:to-teal-500 transition-all duration-300 h-12 px-6 w-full md:w-auto gap-2 border border-emerald-400/20 overflow-hidden transform hover:-translate-y-0.5 active:translate-y-0">
+              <span className="group relative inline-flex items-center justify-center rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:from-emerald-400 hover:to-teal-500 transition-all duration-300 h-12 px-6 w-full md:w-auto gap-2 border border-emerald-400/20 overflow-hidden transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer">
                 <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
                 <Plus className="h-5 w-5 transition-transform duration-300 group-hover:rotate-90 group-hover:scale-110" />
                 <span className="tracking-wide">New Transaction</span>
-              </Button>
+              </span>
             </DialogTrigger>
 
             <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto rounded-xl p-0 border bg-background shadow-2xl dark:border-zinc-800">

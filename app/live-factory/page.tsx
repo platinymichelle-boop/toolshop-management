@@ -2,8 +2,8 @@ import LiveFactoryStatus from "@/components/LiveFactoryStatus";
 
 export default function LiveFactoryPage() {
   return (
-    <div className="p-6">
+    <main className="w-full min-h-screen bg-slate-950">
       <LiveFactoryStatus />
-    </div>
+    </main>
   );
 }
