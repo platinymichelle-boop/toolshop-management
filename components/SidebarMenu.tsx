@@ -7,6 +7,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import {
   LayoutDashboard,
   Factory,
+  Zap,
   Wrench,
   Package,
   Users,
@@ -45,6 +46,7 @@ export default function SidebarMenu({
     OPERATIONS: [
       "/dashboard",
       "/tools",
+      "/energy",
       "/repairs",
       "/breakdown",
       "/customer-claims",
@@ -115,46 +117,41 @@ export default function SidebarMenu({
 
         {openSections.OPERATIONS && (
           <div className="space-y-1 pt-1 transition-all duration-200">
-            <Link href="/dashboard" className={linkClass("/dashboard")}>
+            <Link href="/dashboard">
               <LayoutDashboard className={iconClass("/dashboard")} />
               <span className="truncate">{t.dashboard}</span>
             </Link>
 
-            <Link href="/live-factory" className={linkClass("/live-factory")}>
+            <Link href="/live-factory">
               <Factory className={iconClass("/live-factory")} />
               <span className="truncate">Factory Monitor</span>
             </Link>
 
-            <Link
-              href="/customer-claims"
-              className={linkClass("/customer-claims")}
-            >
+            <Link href="/customer-claims">
               <ClipboardCheck className={iconClass("/customer-claims")} />
               <span className="truncate">Customer Claims</span>
             </Link>
 
             {showTools && (
-              <Link href="/tools" className={linkClass("/tools")}>
+              <Link href="/tools">
                 <Factory className={iconClass("/tools")} />
                 <span className="truncate">{t.tools}</span>
               </Link>
             )}
 
-            {/* Zona corectată pentru Energy Management */}
-            <Link href="/energy" className={linkClass("/energy")}>
-              <Factory className={iconClass("/energy")} />
+            <Link href="/energy">
+              <Zap className={iconClass("/energy")} />
               <span className="truncate">Energy Management</span>
             </Link>
 
             {showRepairs && (
-              <Link href="/repairs" className={linkClass("/repairs")}>
+              <Link href="/repairs">
                 <Wrench className={iconClass("/repairs")} />
                 <span className="truncate">{t.repairs}</span>
               </Link>
             )}
 
-            {/* Mutat corect în interiorul div-ului și blocului condițional */}
-            <Link href="/breakdown" className={linkClass("/breakdown")}>
+            <Link href="/breakdown">
               <AlertTriangle className={iconClass("/breakdown")} />
               <span className="truncate">Breakdown Tracker</span>
             </Link>

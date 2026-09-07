@@ -9,6 +9,7 @@ import LanguageToggle from "./LanguageToggle";
 import {
   LayoutDashboard,
   Factory,
+  Zap,
   Wrench,
   AlertTriangle,
   Package,
@@ -107,6 +108,11 @@ export default function Sidebar() {
           icon: Factory,
           badge: kpis.machinesCount,
           badgeType: "neutral",
+        },
+        {
+          name: "Energy Management",
+          href: "/energy",
+          icon: Zap,
         },
         {
           name: "Repairs",
