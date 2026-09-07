@@ -403,7 +403,7 @@ export default function BreakdownTrackerPage() {
                   {session.mold_number && (
                     <p className="col-span-2">
                       <span className="text-slate-500 font-bold uppercase text-[9px]">
-                        Mold / Matriță:
+                        Equipment/Tool:
                       </span>{" "}
                       <span className="text-amber-400 font-mono font-semibold">
                         {session.mold_number}
@@ -473,29 +473,6 @@ export default function BreakdownTrackerPage() {
                   {item.name}
                 </option>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-1">
-              Selectează Matriță (Opțional):
-            </label>
-            <select
-              disabled={loading}
-              value={selectedMold}
-              onChange={(e) => setSelectedMold(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
-            >
-              <option value="">
-                -- Fără Matriță / Selectează (Opțional) --
-              </option>
-              {moldOptions
-                .filter((item) => item.tool_number !== null)
-                .map((item) => (
-                  <option key={item.id} value={item.tool_number}>
-                    {item.tool_number}
-                  </option>
-                ))}
             </select>
           </div>
 

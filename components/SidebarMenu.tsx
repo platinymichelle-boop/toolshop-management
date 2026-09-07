@@ -140,6 +140,12 @@ export default function SidebarMenu({
               </Link>
             )}
 
+            {/* Zona corectată pentru Energy Management */}
+            <Link href="/energy" className={linkClass("/energy")}>
+              <Factory className={iconClass("/energy")} />
+              <span className="truncate">Energy Management</span>
+            </Link>
+
             {showRepairs && (
               <Link href="/repairs" className={linkClass("/repairs")}>
                 <Wrench className={iconClass("/repairs")} />
@@ -147,6 +153,7 @@ export default function SidebarMenu({
               </Link>
             )}
 
+            {/* Mutat corect în interiorul div-ului și blocului condițional */}
             <Link href="/breakdown" className={linkClass("/breakdown")}>
               <AlertTriangle className={iconClass("/breakdown")} />
               <span className="truncate">Breakdown Tracker</span>

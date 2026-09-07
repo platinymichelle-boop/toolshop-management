@@ -176,7 +176,7 @@ export function useRepairsData(alertFields: string, alertSuccess: string) {
 
     const { utils, writeFile } = await import("xlsx");
     const dataRows = [
-      ["RAPORT TEHNIC DE REPARAȚIE - TOOLSHOP PRO"],
+      ["RAPORT TEHNIC DE REPARAȚIE - Metal Stamping Maintenance"],
       [],
       ["ID Tichet:", repair.id],
       ["Dată Deschidere:", new Date(repair.created_at).toLocaleDateString()],

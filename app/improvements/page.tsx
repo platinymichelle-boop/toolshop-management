@@ -242,7 +242,7 @@ export default function ImprovementsPage() {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(20);
-      doc.text("TOOLSHOP PRO - RAPORT KAIZEN", 15, 20);
+      doc.text("Metal Stamping Maintenance - RAPORT KAIZEN", 15, 20);
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
@@ -306,7 +306,7 @@ export default function ImprovementsPage() {
       slide.background = { color: "F8FAFC" };
 
       // 1. Antet Prezentare (Stânga sus)
-      slide.addText("TOOLSHOP PRO - KAIZEN REPORT", {
+      slide.addText("Metal Stamping Maintenance - KAIZEN REPORT", {
         x: 0.5,
         y: 0.3,
         w: 10,
