@@ -95,13 +95,6 @@ export default function Sidebar() {
     {
       title: "Operations",
       items: [
-        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Factory Monitor", href: "/live-factory", icon: Factory },
-        {
-          name: "Customer Claims",
-          href: "/customer-claims",
-          icon: ClipboardCheck,
-        },
         {
           name: "Equipments",
           href: "/tools",
@@ -109,24 +102,13 @@ export default function Sidebar() {
           badge: kpis.machinesCount,
           badgeType: "neutral",
         },
-        {
-          name: "Energy Management",
-          href: "/energy",
-          icon: Zap,
-        },
+
         {
           name: "Repairs",
           href: "/repairs",
           icon: Wrench,
           badge: kpis.openRepairs,
           badgeType: "warning",
-        },
-        {
-          name: "Breakdown Tracker",
-          href: "/breakdown",
-          icon: AlertTriangle,
-          badge: kpis.openBreakdowns,
-          badgeType: "danger",
         },
       ],
     },
@@ -149,29 +131,6 @@ export default function Sidebar() {
         { name: "Technical Team", href: "/technicians", icon: Users },
         { name: "Improvements", href: "/improvements", icon: Lightbulb },
         { name: "Fluid Management", href: "/fluid-management", icon: Droplets },
-        { name: "Budget Planner", href: "/budget-planner", icon: Wallet },
-      ],
-    },
-    {
-      title: "Analytics",
-      items: [
-        {
-          name: "Breakdown Analytics",
-          href: "/breakdown/dashboard",
-          icon: BarChart3,
-        },
-        { name: "Reports", href: "/reports", icon: FileBarChart2 },
-      ],
-    },
-    {
-      title: "Administration",
-      items: [
-        { name: "Settings", href: "/admin/matrix", icon: Settings },
-        {
-          name: "Access Management",
-          href: "/access-management",
-          icon: KeyRound,
-        },
       ],
     },
   ];

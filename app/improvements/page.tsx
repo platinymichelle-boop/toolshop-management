@@ -33,6 +33,8 @@ export default function ImprovementsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [selectedIdea, setSelectedIdea] = useState<Improvement | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
   async function loadImprovements() {
     try {
       setIsLoading(true);
@@ -60,7 +62,6 @@ export default function ImprovementsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Funcție helper pentru upload fișiere în bucket-ul 'improvement_images'
   async function uploadPhoto(
     file: File,
     folder: "before" | "after",
@@ -87,7 +88,6 @@ export default function ImprovementsPage() {
     }
   }
 
-  // Înregistrarea unei idei Kaizen noi cu poze opționale
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
@@ -107,6 +107,7 @@ export default function ImprovementsPage() {
         status: "Proposed",
         image_before_url: imgBeforeUrl,
         image_after_url: imgAfterUrl,
+        system: system,
         estimated_saving: estimatedSaving,
       });
 
@@ -114,6 +115,8 @@ export default function ImprovementsPage() {
 
       setTitle("");
       setDescription("");
+      setSystem("Mechanical");
+      setEstimatedSaving(0);
       setFileBefore(null);
       setFileAfter(null);
       alert("Propunerea Kaizen cu suport vizual a fost înregistrată!");
@@ -125,7 +128,6 @@ export default function ImprovementsPage() {
     }
   }
 
-  // Actualizarea rapidă a statusului (Procesul de Audit / Editare)
   async function handleUpdateStatus(id: number) {
     try {
       const { error } = await supabase
@@ -142,7 +144,6 @@ export default function ImprovementsPage() {
     }
   }
 
-  // Liniile 133 - Sfârșit funcție: Codul curat și imun la blocajele CORS
   function getBase64FromUrl(url: string): Promise<string | null> {
     return new Promise((resolve) => {
       const img = new Image();
@@ -166,7 +167,6 @@ export default function ImprovementsPage() {
       img.src = url;
     });
   }
-
   async function exportDocument(
     ideaId: number,
     type: "pdf" | "pptx" | "excel",
@@ -296,7 +296,6 @@ export default function ImprovementsPage() {
       doc.save(`${fileName}.pdf`);
     }
 
-    // --- 3. GENERARE EXPORT PREZENTARE PPTX FORMAT KAIZEN A3 (COMPACTAT PE UN SINGUR SLIDE) ---
     if (type === "pptx") {
       const PptxGenJS = (await import("pptxgenjs")).default;
       const pptx = new PptxGenJS();
@@ -305,7 +304,6 @@ export default function ImprovementsPage() {
       const slide = pptx.addSlide();
       slide.background = { color: "F8FAFC" };
 
-      // 1. Antet Prezentare (Stânga sus)
       slide.addText("Metal Stamping Maintenance - KAIZEN REPORT", {
         x: 0.5,
         y: 0.3,
@@ -337,7 +335,6 @@ export default function ImprovementsPage() {
         },
       );
 
-      // 2. Zonă text centrală (Descriere)
       slide.addText("Descriere & Impact Schimbare:", {
         x: 0.5,
         y: 1.7,
@@ -357,10 +354,6 @@ export default function ImprovementsPage() {
         valign: "top",
       });
 
-      // 3. SECȚIUNE VIZUALĂ COMPACTĂ (Ridicată mai sus și micșorată pentru a nu depăși cadrul)
-      // Coordonata Y modificată la 3.1 pentru a lăsa spațiu generos jos. Dimensiune compactă: 2.8 x 2.1
-
-      // Foto 1: BEFORE (Poziționată simetric în stânga-centru la x: 3.3)
       if (idea.image_before_url) {
         const base64Img = await getBase64FromUrl(idea.image_before_url);
         if (base64Img) {
@@ -378,7 +371,6 @@ export default function ImprovementsPage() {
         }
       }
 
-      // Foto 2: AFTER (Poziționată simetric în dreapta-centru la x: 7.2)
       if (idea.image_after_url) {
         const base64Img = await getBase64FromUrl(idea.image_after_url);
         if (base64Img) {
@@ -396,16 +388,13 @@ export default function ImprovementsPage() {
         }
       }
 
-      // 4. Notă de subsol (Footer repoziționat în siguranță la y: 6.8)
       slide.addText(
         `ID Raport: #${idea.id}   •   Generat la data: ${new Date().toLocaleDateString("ro-RO")}`,
         { x: 0.5, y: 6.8, w: 10, h: 0.2, fontSize: 8, color: "94A3B8" },
       );
-
       await pptx.writeFile({ fileName: `${fileName}.pptx` });
     }
   }
-
   return (
     <div className="space-y-8">
       {/* Antet Premium */}
@@ -423,7 +412,6 @@ export default function ImprovementsPage() {
 
       {/* Formular de adăugare */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Formular */}
         <div className="xl:col-span-3 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
           <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
             <span>💡</span> Lansează o fișă de îmbunătățire continuă
@@ -480,7 +468,6 @@ export default function ImprovementsPage() {
               <label className="text-xs font-semibold text-gray-500">
                 Cost Reduction Estimat (€ / an)
               </label>
-
               <input
                 type="number"
                 min="0"
@@ -530,13 +517,11 @@ export default function ImprovementsPage() {
             </button>
           </form>
         </div>
-
         {/* KPI PANEL */}
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
           <h3 className="text-base font-bold text-slate-800 mb-4">
             💰 Cost Reduction
           </h3>
-
           <div className="space-y-4">
             <div className="p-4 rounded-xl bg-slate-50 border">
               <div className="text-xs text-gray-500">Total Improvements</div>
@@ -544,14 +529,12 @@ export default function ImprovementsPage() {
                 {ideas.length}
               </div>
             </div>
-
             <div className="p-4 rounded-xl bg-green-50 border border-green-100">
               <div className="text-xs text-green-700">Implemented</div>
               <div className="text-3xl font-black text-green-700">
                 {ideas.filter((i) => i.status === "Implemented").length}
               </div>
             </div>
-
             <div className="p-4 rounded-xl bg-amber-50 border border-amber-100">
               <div className="text-xs text-amber-700">Completion Rate</div>
               <div className="text-3xl font-black text-amber-700">
@@ -565,7 +548,6 @@ export default function ImprovementsPage() {
                 %
               </div>
             </div>
-
             <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
               <div className="text-xs text-indigo-700">
                 Estimated Cost Reduction
@@ -578,7 +560,6 @@ export default function ImprovementsPage() {
                   .toLocaleString()}
               </div>
             </div>
-
             <div className="text-xs text-gray-400 border-t pt-3">
               Assumption:
               <br />
@@ -587,12 +568,12 @@ export default function ImprovementsPage() {
           </div>
         </div>
       </div>
+
       {/* Registrul de Fișe Raportate */}
       <div className="space-y-6">
         <h2 className="text-lg font-black text-slate-800">
           Panou Urmărire Proiecte Active
         </h2>
-
         {isLoading ? (
           <p className="text-sm text-gray-400">
             Se încarcă registrul digital de inovații...
@@ -604,7 +585,6 @@ export default function ImprovementsPage() {
                 key={idea.id}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6 hover:shadow-md transition-shadow"
               >
-                {/* Header Card */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-4 border-gray-100">
                   <div>
                     <span className="bg-slate-100 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
@@ -614,7 +594,6 @@ export default function ImprovementsPage() {
                       {idea.title}
                     </h3>
                   </div>
-
                   <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between">
                     {editingId === idea.id ? (
                       <div className="flex items-center gap-2">
@@ -643,13 +622,7 @@ export default function ImprovementsPage() {
                     ) : (
                       <div className="flex items-center gap-2">
                         <span
-                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                            idea.status === "Implemented"
-                              ? "bg-green-100 text-green-800"
-                              : idea.status === "In Review"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-blue-100 text-blue-800"
-                          }`}
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${idea.status === "Implemented" ? "bg-green-100 text-green-800" : idea.status === "In Review" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}
                         >
                           ● {idea.status}
                         </span>
@@ -666,8 +639,6 @@ export default function ImprovementsPage() {
                     )}
                   </div>
                 </div>
-
-                {/* Body: Descriere și Imagini comparative */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="text-sm text-gray-600 space-y-2 lg:col-span-1">
                     <p className="font-semibold text-xs uppercase text-gray-400 tracking-wider">
@@ -680,7 +651,6 @@ export default function ImprovementsPage() {
                     </div>
                   </div>
 
-                  {/* Imaginile Comparative */}
                   <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block">
@@ -691,7 +661,11 @@ export default function ImprovementsPage() {
                           <img
                             src={idea.image_before_url}
                             alt="Before"
-                            className="object-cover w-full h-full"
+                            className="object-cover w-full h-full cursor-pointer hover:scale-105 transition-transform"
+                            onClick={() => {
+                              setSelectedIdea(idea);
+                              setShowImageModal(true);
+                            }}
                           />
                         ) : (
                           <span className="text-xs text-gray-400 italic">
@@ -710,7 +684,11 @@ export default function ImprovementsPage() {
                           <img
                             src={idea.image_after_url}
                             alt="After"
-                            className="object-cover w-full h-full"
+                            className="object-cover w-full h-full cursor-pointer hover:scale-105 transition-transform"
+                            onClick={() => {
+                              setSelectedIdea(idea);
+                              setShowImageModal(true);
+                            }}
                           />
                         ) : (
                           <span className="text-xs text-gray-400 italic">
@@ -722,14 +700,11 @@ export default function ImprovementsPage() {
                   </div>
                 </div>
 
-                {/* Footer: Panou Executiv de Export */}
                 <div className="pt-4 border-t border-gray-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
                   <div className="text-gray-400 font-mono text-[10px]">
                     ID Fișă: #{idea.id} | Înregistrat la:{" "}
                     {new Date(idea.created_at).toLocaleDateString("ro-RO")}
                   </div>
-
-                  {/* Butoane premium de descărcare fișe */}
                   <div className="flex flex-wrap gap-2 self-stretch sm:self-auto">
                     <button
                       onClick={() => exportDocument(idea.id, "pdf")}
@@ -761,6 +736,62 @@ export default function ImprovementsPage() {
           </div>
         )}
       </div>
+
+      {/* MODAL MARE VERIFICARE VIZUALĂ */}
+      {showImageModal && selectedIdea && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-6xl p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-slate-800">
+                VISUAL INSPECTION TICKET
+              </h2>
+              <button
+                onClick={() => {
+                  setShowImageModal(false);
+                  setSelectedIdea(null);
+                }}
+                className="text-slate-500 hover:text-slate-900 font-semibold"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="font-bold text-rose-600 mb-2">BEFORE</h3>
+                <div className="h-[500px] border rounded-2xl overflow-hidden bg-slate-100">
+                  {selectedIdea.image_before_url ? (
+                    <img
+                      src={selectedIdea.image_before_url}
+                      alt="Before"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-400">
+                      No image
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-emerald-600 mb-2">AFTER</h3>
+                <div className="h-[500px] border rounded-2xl overflow-hidden bg-slate-100">
+                  {selectedIdea.image_after_url ? (
+                    <img
+                      src={selectedIdea.image_after_url}
+                      alt="After"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-400">
+                      Waiting for implementation
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
