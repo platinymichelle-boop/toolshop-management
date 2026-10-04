@@ -60,6 +60,7 @@ export default function SidebarMenu({
       "/pm-history",
       "/fluid-management",
       "/budget-planner",
+      "/maintenance-reports",
     ].includes(pathname),
     ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
     ADMINISTRATION: ["/admin", "/access-management"].includes(pathname),
@@ -220,6 +221,15 @@ export default function SidebarMenu({
             >
               <Wallet className={iconClass("/budget-planner")} />
               <span className="truncate">Budget Planner</span>
+            </Link>
+
+            {/* AICI ERA ERROAREA - Link-ul a fost reconstruit corect */}
+            <Link
+              href="/maintenance-reports"
+              className={linkClass("/maintenance-reports")}
+            >
+              <ClipboardCheck className={iconClass("/maintenance-reports")} />
+              <span className="truncate">Maintenance Reports</span>
             </Link>
           </div>
         )}

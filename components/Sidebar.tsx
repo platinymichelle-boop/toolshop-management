@@ -131,6 +131,12 @@ export default function Sidebar() {
         { name: "Technical Team", href: "/technicians", icon: Users },
         { name: "Improvements", href: "/improvements", icon: Lightbulb },
         { name: "Fluid Management", href: "/fluid-management", icon: Droplets },
+
+        {
+          name: "Maintenance Reports",
+          href: "/maintenance-reports",
+          icon: ClipboardCheck,
+        },  
       ],
     },
   ];
