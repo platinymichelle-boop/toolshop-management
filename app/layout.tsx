@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ToolShop Pro",
+  title: "Metal Stamping Maintenance",
   description: "Sistem de management operational pentru service",
   // Next.js va injecta automat ruta manifestului din app/manifest.ts
 };
