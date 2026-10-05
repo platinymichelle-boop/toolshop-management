@@ -482,18 +482,6 @@ function MaintenanceReportsForm() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
-                SAP Notification Number
-              </label>
-              <input
-                type="text"
-                className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                placeholder="e.g. 11023638"
-                value={sapNotification}
-                onChange={(e) => setSapNotification(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                 Date *
               </label>
               <input

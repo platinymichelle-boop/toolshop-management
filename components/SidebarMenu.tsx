@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { UserPermissions } from "@/lib/useSidebarAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -22,7 +22,7 @@ import {
   History,
   Droplets,
   KeyRound,
-  Wallet, // Adăugat pentru Budget Planner
+  Wallet,
 } from "lucide-react";
 
 interface SidebarMenuProps {
@@ -41,30 +41,44 @@ export default function SidebarMenu({
   const showParts = isAdmin || permissions?.can_view_parts === true;
   const showReports = isAdmin || permissions?.can_view_reports === true;
 
-  // Stări pentru controlul deschiderii fiecărei secțiuni (Acordeon) optimizate cu noile rute
+  // REPARAT: Pornim cu stările închise pe server pentru a asigura un proces de Hydration fără erori
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    OPERATIONS: [
-      "/dashboard",
-      "/tools",
-      "/energy",
-      "/repairs",
-      "/breakdown",
-      "/customer-claims",
-      "/live-factory",
-    ].includes(pathname),
-    MAINTENANCE: [
-      "/spare-parts",
-      "/technicians",
-      "/improvements",
-      "/preventive-maintenance",
-      "/pm-history",
-      "/fluid-management",
-      "/budget-planner",
-      "/maintenance-reports",
-    ].includes(pathname),
-    ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
-    ADMINISTRATION: ["/admin", "/access-management"].includes(pathname),
+    OPERATIONS: false,
+    MAINTENANCE: false,
+    ANALYTICS: false,
+    ADMINISTRATION: false,
   });
+
+  // REPARAT: Deschidem automat secțiunea corespunzătoare doar după ce componenta s-a montat pe client
+  useEffect(() => {
+    setOpenSections({
+      OPERATIONS: [
+        "/dashboard",
+        "/tools",
+        "/energy",
+        "/repairs",
+        "/breakdown",
+        "/customer-claims",
+        "/live-factory",
+      ].includes(pathname),
+      MAINTENANCE: [
+        "/spare-parts",
+        "/technicians",
+        "/improvements",
+        "/preventive-maintenance",
+        "/pm-history",
+        "/fluid-management",
+        "/budget-planner",
+        "/maintenance-reports",
+      ].includes(pathname),
+      ANALYTICS: ["/breakdown/dashboard", "/reports"].includes(pathname),
+      ADMINISTRATION: [
+        "/admin",
+        "/access-management",
+        "/admin/matrix",
+      ].includes(pathname),
+    });
+  }, [pathname]);
 
   const toggleSection = (section: string) => {
     setOpenSections((prev) => ({
@@ -73,14 +87,15 @@ export default function SidebarMenu({
     }));
   };
 
+  // REPARAT: Clase actualizate pentru suportul dual Light / Dark Mode (Emerald Theme)
   const linkClass = (path: string) => {
     const isActive = pathname === path;
     return `
-      group relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ml-2 border
+      group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 border
       ${
         isActive
-          ? "bg-gradient-to-r from-slate-900 to-slate-900/50 border-slate-800 text-indigo-400 font-semibold shadow-inner"
-          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50 border-transparent"
+          ? "bg-gradient-to-r from-emerald-50 to-zinc-50 dark:from-emerald-950/30 dark:to-zinc-900/30 border-emerald-100/50 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-semibold shadow-sm before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:bg-emerald-500 before:rounded-r-md"
+          : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 border-transparent"
       }
     `;
   };
@@ -88,16 +103,18 @@ export default function SidebarMenu({
   const iconClass = (path: string) => {
     const isActive = pathname === path;
     return `h-4 w-4 shrink-0 transition-transform group-hover:scale-110 duration-200 ${
-      isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+      isActive
+        ? "text-emerald-600 dark:text-emerald-400"
+        : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
     }`;
   };
 
   const sectionButtonClass = (isOpen: boolean) => `
-    w-full flex items-center justify-between px-3 py-2 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all duration-200
+    w-full flex items-center justify-between px-3 py-2 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all duration-200 border
     ${
       isOpen
-        ? "bg-slate-900/40 text-slate-300 border border-slate-900"
-        : "text-slate-500 hover:text-slate-300 hover:bg-slate-900/20 border border-transparent"
+        ? "bg-zinc-100/60 dark:bg-zinc-900/40 text-zinc-700 dark:text-zinc-300 border-zinc-200/50 dark:border-zinc-800/60"
+        : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900/20 border-transparent"
     }
   `;
   return (
@@ -117,49 +134,51 @@ export default function SidebarMenu({
         </button>
 
         {openSections.OPERATIONS && (
-          <div className="space-y-1 pt-1 transition-all duration-200">
-            <Link href="/dashboard">
+          <div className="space-y-1 pt-1 pl-2 transition-all duration-200">
+            <Link href="/dashboard" className={linkClass("/dashboard")}>
               <LayoutDashboard className={iconClass("/dashboard")} />
               <span className="truncate">{t.dashboard}</span>
             </Link>
 
-            <Link href="/live-factory">
+            <Link href="/live-factory" className={linkClass("/live-factory")}>
               <Factory className={iconClass("/live-factory")} />
               <span className="truncate">Factory Monitor</span>
             </Link>
 
-            <Link href="/customer-claims">
+            <Link
+              href="/customer-claims"
+              className={linkClass("/customer-claims")}
+            >
               <ClipboardCheck className={iconClass("/customer-claims")} />
               <span className="truncate">Customer Claims</span>
             </Link>
 
             {showTools && (
-              <Link href="/tools">
+              <Link href="/tools" className={linkClass("/tools")}>
                 <Factory className={iconClass("/tools")} />
                 <span className="truncate">{t.tools}</span>
               </Link>
             )}
 
-            <Link href="/energy">
+            <Link href="/energy" className={linkClass("/energy")}>
               <Zap className={iconClass("/energy")} />
               <span className="truncate">Energy Management</span>
             </Link>
 
             {showRepairs && (
-              <Link href="/repairs">
+              <Link href="/repairs" className={linkClass("/repairs")}>
                 <Wrench className={iconClass("/repairs")} />
                 <span className="truncate">{t.repairs}</span>
               </Link>
             )}
 
-            <Link href="/breakdown">
+            <Link href="/breakdown" className={linkClass("/breakdown")}>
               <AlertTriangle className={iconClass("/breakdown")} />
               <span className="truncate">Breakdown Tracker</span>
             </Link>
           </div>
         )}
       </div>
-
       {/* Secțiunea MAINTENANCE */}
       <div className="space-y-1">
         <button
@@ -174,7 +193,7 @@ export default function SidebarMenu({
           )}
         </button>
         {openSections.MAINTENANCE && (
-          <div className="space-y-1 pt-1 transition-all duration-200">
+          <div className="space-y-1 pt-1 pl-2 transition-all duration-200">
             {showParts && (
               <Link href="/spare-parts" className={linkClass("/spare-parts")}>
                 <Package className={iconClass("/spare-parts")} />
@@ -223,7 +242,6 @@ export default function SidebarMenu({
               <span className="truncate">Budget Planner</span>
             </Link>
 
-            {/* AICI ERA ERROAREA - Link-ul a fost reconstruit corect */}
             <Link
               href="/maintenance-reports"
               className={linkClass("/maintenance-reports")}
@@ -251,7 +269,7 @@ export default function SidebarMenu({
           </button>
 
           {openSections.ANALYTICS && (
-            <div className="space-y-1 pt-1 transition-all duration-200">
+            <div className="space-y-1 pt-1 pl-2 transition-all duration-200">
               <Link
                 href="/breakdown/dashboard"
                 className={linkClass("/breakdown/dashboard")}
@@ -285,7 +303,7 @@ export default function SidebarMenu({
           </button>
 
           {openSections.ADMINISTRATION && (
-            <div className="space-y-1 pt-1 transition-all duration-200">
+            <div className="space-y-1 pt-1 pl-2 transition-all duration-200">
               <Link href="/admin/matrix" className={linkClass("/admin/matrix")}>
                 <Settings className={iconClass("/admin/matrix")} />
                 <span className="truncate">Matrix Configuration</span>
