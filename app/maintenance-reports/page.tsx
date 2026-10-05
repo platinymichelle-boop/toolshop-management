@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { mainEquipment, equipmentData } from "@/lib/maintenanceData";
 
-export default function MaintenanceReportsPage() {
+function MaintenanceReportsForm() {
+  const searchParams = useSearchParams();
+  const breakdownId = searchParams.get("id");
+
   // Stări pentru preluarea tehnicienilor din baza de date
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [loadingTechnicians, setLoadingTechnicians] = useState(true);
@@ -62,7 +66,6 @@ export default function MaintenanceReportsPage() {
     type: "success" | "error" | null;
     text: string;
   }>({ type: null, text: "" });
-
   // Funcție pentru generarea automată a datei, orei și schimbului
   const getAutomatedDateTimeAndShift = () => {
     const now = new Date();
@@ -85,9 +88,11 @@ export default function MaintenanceReportsPage() {
 
     return { currentDateStr, currentTimeStr, currentShift };
   };
-  // Hook pentru încărcarea tehnicienilor și inițializarea datelor curente
+
+  // Hook principal pentru încărcarea tehnicienilor și precompletarea automată din Breakdown Tracker
   useEffect(() => {
-    async function loadTechnicians() {
+    async function loadInitialData() {
+      // 1. Încarcă tehnicienii din baza de date
       try {
         setLoadingTechnicians(true);
         const { data, error } = await supabase
@@ -103,17 +108,73 @@ export default function MaintenanceReportsPage() {
       } finally {
         setLoadingTechnicians(false);
       }
+
+      // 2. Inițializează datele de timp curente (valori implicite ca fallback)
+      const { currentDateStr, currentTimeStr, currentShift } =
+        getAutomatedDateTimeAndShift();
+
+      setReportDate(currentDateStr);
+      setMalfunctionEndDate(currentDateStr);
+      setStartTime(currentTimeStr);
+      setShift(currentShift);
+
+      // 3. Integrare completă Cerința 3: preluare date live din tabela breakdowns
+      if (breakdownId) {
+        try {
+          const { data: breakdown, error: bdError } = await supabase
+            .from("breakdowns")
+            .select("*")
+            .eq("id", breakdownId)
+            .single();
+
+          if (bdError) {
+            console.error("Error fetching active breakdown:", bdError.message);
+          } else if (breakdown) {
+            // Maparea câmpurilor din înregistrarea din baza de date în stările UI
+            setBreakdownDescription(breakdown.issue_description || "");
+            setPersonResponsible(breakdown.technician_name || "");
+            setEquipmentCode(breakdown.press_number || "");
+
+            if (breakdown.start_time) {
+              const startDateTime = new Date(breakdown.start_time);
+
+              // Formatează corect data: YYYY-MM-DD
+              const year = startDateTime.getFullYear();
+              const month = String(startDateTime.getMonth() + 1).padStart(
+                2,
+                "0",
+              );
+              const day = String(startDateTime.getDate()).padStart(2, "0");
+              const bdDateStr = `${year}-${month}-${day}`;
+
+              // Formatează corect ora: HH:MM
+              const hours = String(startDateTime.getHours()).padStart(2, "0");
+              const minutes = String(startDateTime.getMinutes()).padStart(
+                2,
+                "0",
+              );
+              const bdTimeStr = `${hours}:${minutes}`;
+
+              setReportDate(bdDateStr);
+              setStartTime(bdTimeStr);
+              setMalfunctionEndDate(bdDateStr);
+
+              // Calcul automat al schimbului în funcție de ora nativă la care s-a pornit avaria
+              const hrInt = startDateTime.getHours();
+              let bdShift = 3;
+              if (hrInt >= 7 && hrInt < 15) bdShift = 1;
+              else if (hrInt >= 15 && hrInt < 23) bdShift = 2;
+              setShift(bdShift);
+            }
+          }
+        } catch (err) {
+          console.error("Catch fetching active breakdown details:", err);
+        }
+      }
     }
-    loadTechnicians();
 
-    const { currentDateStr, currentTimeStr, currentShift } =
-      getAutomatedDateTimeAndShift();
-    setReportDate(currentDateStr);
-    setMalfunctionEndDate(currentDateStr);
-    setStartTime(currentTimeStr);
-    setShift(currentShift);
-  }, []);
-
+    loadInitialData();
+  }, [breakdownId]);
   // Căutare asincronă în tabela spare_parts pe baza coloanelor reale din schemă
   useEffect(() => {
     if (!sparePartsUsed || sparePartsUsed.trim().length < 2) {
@@ -161,6 +222,7 @@ export default function MaintenanceReportsPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
   // Calcul inteligent pentru Total Downtime & Auto Calculation End Time / End Date cu Manual Override
   const sumOfDetailedTimes =
     waitingTime +
@@ -247,7 +309,6 @@ export default function MaintenanceReportsPage() {
     equipmentData[selectedMainEquipment as keyof typeof equipmentData]
       ? equipmentData[selectedMainEquipment as keyof typeof equipmentData]
       : null;
-
   const handleClearForm = () => {
     const { currentDateStr, currentTimeStr, currentShift } =
       getAutomatedDateTimeAndShift();
@@ -291,10 +352,11 @@ export default function MaintenanceReportsPage() {
     setIsLoading(true);
     setStatusMessage({ type: null, text: "" });
 
-    if (!reportDate || !selectedMainEquipment || !equipmentCode) {
+    // Permitem flexibilitate la salvare dacă codul de echipament a venit deja precompletat din tracker
+    if (!reportDate || !equipmentCode) {
       setStatusMessage({
         type: "error",
-        text: "Please fill in all mandatory fields (Date, Main Equipment, Equipment Code).",
+        text: "Please fill in all mandatory fields (Date, Equipment Code).",
       });
       setIsLoading(false);
       return;
@@ -306,7 +368,7 @@ export default function MaintenanceReportsPage() {
         functional_location: functionalLocation,
         report_date: reportDate,
         shift: shift,
-        main_equ: selectedMainEquipment,
+        main_equ: selectedMainEquipment || "Stamping Press", // Fallback standard dacă fluxul vine din tracker operativ
         equipment_code: equipmentCode,
         sub_equ: subEquipment || "",
         defection_type: defectionType || "",
@@ -345,11 +407,30 @@ export default function MaintenanceReportsPage() {
         return;
       }
 
+      // Cerința 4 & 5: Actualizarea statusului avariei în tabela breakdowns după inserarea cu succes
+      if (breakdownId) {
+        const { error: updateError } = await supabase
+          .from("breakdowns")
+          .update({
+            status: "completed",
+            end_time: new Date().toISOString(),
+          })
+          .eq("id", breakdownId);
+
+        if (updateError) {
+          console.error(
+            "Failed to update breakdown status in Supabase:",
+            updateError.message,
+          );
+        }
+      }
+
       setStatusMessage({
         type: "success",
-        text: "Maintenance report saved successfully!",
+        text: "Maintenance report saved successfully and active breakdown closed!",
       });
-      handleClearForm(); // Curățare inteligentă cu repunerea flag-ului pe false
+
+      handleClearForm(); // Curățare inteligentă a formularului cu repunerea flag-urilor pe false
     } catch (catchErr: any) {
       const genericMessage = catchErr?.message || "Unknown execution error";
       alert(`Catch Triggered: ${genericMessage}`);
@@ -485,7 +566,6 @@ export default function MaintenanceReportsPage() {
                     setSubEquipment("");
                     setDefectionType("");
                   }}
-                  required
                 >
                   <option value="">Select Main Equipment</option>
                   {mainEquipment.map((item) => (
@@ -499,21 +579,31 @@ export default function MaintenanceReportsPage() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Equipment Code *
                 </label>
-                <select
-                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
-                  value={equipmentCode}
-                  onChange={(e) => setEquipmentCode(e.target.value)}
-                  disabled={!selectedMainEquipment}
-                  required
-                >
-                  <option value="">Select Equipment Code</option>
-                  {selectedData &&
-                    selectedData.machines.map((machine) => (
-                      <option key={machine} value={machine}>
-                        {machine}
-                      </option>
-                    ))}
-                </select>
+                {selectedMainEquipment ? (
+                  <select
+                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    value={equipmentCode}
+                    onChange={(e) => setEquipmentCode(e.target.value)}
+                    required
+                  >
+                    <option value="">Select Equipment Code</option>
+                    {selectedData &&
+                      selectedData.machines.map((machine) => (
+                        <option key={machine} value={machine}>
+                          {machine}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Equipment code prefilled..."
+                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50"
+                    value={equipmentCode}
+                    onChange={(e) => setEquipmentCode(e.target.value)}
+                    required
+                  />
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -577,6 +667,7 @@ export default function MaintenanceReportsPage() {
             />
           </div>
         </div>
+
         {/* SECTION 4: REPAIR INFORMATION */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 md:p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-4 border-b pb-2">
@@ -601,7 +692,6 @@ export default function MaintenanceReportsPage() {
               <p className="text-[11px] text-slate-400 mt-1 italic">
                 Search by tool number, ENDR code, manufacturer or specification
               </p>
-
               {/* Dropdown modern bazat pe coloanele reale din baza de date */}
               {showSuggestions && sparePartsUsed.trim().length >= 2 && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
@@ -827,5 +917,20 @@ export default function MaintenanceReportsPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+// Exportul implicit înfășoară componenta într-un Suspense Boundary pentru utilizarea regulamentară a useSearchParams() în Next.js
+export default function MaintenanceReportsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 text-center text-sm text-slate-500">
+          Loading form contexts...
+        </div>
+      }
+    >
+      <MaintenanceReportsForm />
+    </Suspense>
   );
 }

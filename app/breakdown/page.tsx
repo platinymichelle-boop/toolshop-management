@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
+import Link from "next/link";
 
 interface DBTool {
   id: number;
@@ -412,13 +413,12 @@ export default function BreakdownTrackerPage() {
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setClosingSession(session)}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xs py-2 rounded-lg uppercase tracking-wider transition-all"
+                <Link
+                  href={`/maintenance-reports?id=${session.id}`}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs py-2 rounded-lg uppercase tracking-wider transition-all block text-center shadow-md"
                 >
-                  🛑 Oprește Intervenția / Închide
-                </button>
+                  📋 Complete Breakdown
+                </Link>
               </div>
             ))}
           </div>
