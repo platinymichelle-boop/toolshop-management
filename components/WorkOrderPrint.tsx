@@ -159,7 +159,6 @@ export default function WorkOrderPrint({
             </tr>
           </tbody>
         </table>
-
         {/* SECTION 1 - PREVENTIVE MAINTENANCE TASKS */}
         <div className="mb-6">
           <h2 className="text-xs font-black uppercase tracking-widest text-black mb-2 border-b-2 border-black pb-1 font-mono">
@@ -180,28 +179,43 @@ export default function WorkOrderPrint({
             </thead>
             <tbody className="divide-y border-black divide-black">
               {actions.map((act, index) => (
-                <tr
-                  key={act.id}
-                  className="align-middle hover:bg-slate-50/50"
-                  style={{ pageBreakInside: "avoid" }}
-                >
-                  {/* Indicator Checkbox Mare, centrat structural in coloana lui */}
-                  <td className="p-3 text-center border-r border-black w-16">
-                    <div className="w-6 h-6 border-2 border-black rounded mx-auto bg-white" />
-                  </td>
+                <tr key={act.id} style={{ display: "contents" }}>
+                  <tr
+                    className="align-middle hover:bg-slate-50/50"
+                    style={{ pageBreakInside: "avoid" }}
+                  >
+                    {/* Indicator Checkbox Mare, centrat structural in coloana lui */}
+                    <td className="p-3 text-center border-r border-black w-16">
+                      <div className="w-6 h-6 border-2 border-black rounded mx-auto bg-white" />
+                    </td>
 
-                  {/* Descriere Task extensibilă pe lățime (~80% din tabel) */}
-                  <td className="p-3 pl-4 border-r border-black text-sm text-black font-medium">
-                    <span className="font-mono text-slate-400 mr-2 text-xs">
-                      {(index + 1).toString().padStart(2, "0")}.
-                    </span>
-                    {act.task_description}
-                  </td>
+                    {/* Descriere Task extensibilă pe lățime */}
+                    <td className="p-3 pl-4 border-r border-black text-sm text-black font-medium">
+                      <span className="font-mono text-slate-400 mr-2 text-xs">
+                        {(index + 1).toString().padStart(2, "0")}.
+                      </span>
+                      {act.task_description}
+                    </td>
 
-                  {/* Coloana Frecvență aliniată în extrema dreaptă a tabelului */}
-                  <td className="p-3 text-center font-mono text-xs font-bold text-slate-800 uppercase w-24">
-                    {act.frequency}
-                  </td>
+                    {/* Coloana Frecvență aliniată în extrema dreaptă a tabelului */}
+                    <td className="p-3 text-center font-mono text-xs font-bold text-slate-800 uppercase w-24">
+                      {act.frequency}
+                    </td>
+                  </tr>
+
+                  {/* [MODIFICARE MODUL PRINT] Adăugarea rândului de comentarii sub fiecare punct */}
+                  <tr
+                    key={`comments-${act.id}`}
+                    style={{ pageBreakInside: "avoid" }}
+                  >
+                    <td className="border-r border-black" />
+                    <td colSpan={2} className="p-2 pl-4 bg-slate-50/50">
+                      <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
+                        <span>Comments / Findings:</span>
+                        <div className="flex-1 border-b border-dashed border-slate-400 h-4 mt-1" />
+                      </div>
+                    </td>
+                  </tr>
                 </tr>
               ))}
             </tbody>
@@ -212,45 +226,40 @@ export default function WorkOrderPrint({
           className="mt-8 pt-4 border-t-4 border-black"
           style={{ pageBreakInside: "avoid" }}
         >
-          <h2 className="text-xs font-black uppercase tracking-widest text-black mb-6 font-mono">
-            SECTION 2 - WORK COMPLETION
+          <h2 className="text-xs font-black uppercase tracking-widest text-black mb-4 font-mono">
+            SECTION 2 - WORK COMPLETION SIGN-OFF
           </h2>
 
-          <table className="w-full border-collapse border-2 border-black font-mono text-xs mb-6">
-            <tbody>
-              <tr className="border-b border-black">
-                <td className="p-4 w-1/2 border-r border-black pb-12 vertical-top">
-                  <p className="font-bold text-slate-700 uppercase mb-4">
-                    TECHNICIAN SIGNATURE
-                  </p>
-                  <div className="border-b border-dashed border-black w-3/4 mt-8" />
-                </td>
-                <td className="p-4 w-1/2 pb-12 vertical-top">
-                  <p className="font-bold text-slate-700 uppercase mb-4">
-                    DATE COMPLETED
-                  </p>
-                  <div className="border-b border-dashed border-black w-3/4 mt-8" />
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={2} className="p-4">
-                  <p className="font-bold text-slate-700 uppercase mb-4">
-                    COMMENTS / OBSERVATIONS
-                  </p>
-                  <div className="space-y-6 pt-2 pb-2">
-                    <div className="border-b border-black w-full" />
-                    <div className="border-b border-black w-full" />
-                    <div className="border-b border-black w-full" />
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="grid grid-cols-3 gap-6 font-mono text-xs mt-4">
+            <div className="border border-black p-3 bg-slate-50/30 rounded">
+              <span className="block text-[10px] text-slate-500 font-bold uppercase mb-8">
+                PERFORMED BY (TECHNICIAN)
+              </span>
+              <div className="border-t border-black pt-1 flex justify-between">
+                <span>Sign:</span>
+                <span>Date:</span>
+              </div>
+            </div>
 
-          {/* FOOTER INDUSTRIAL DE SUBsol */}
-          <div className="text-center font-mono text-[10px] text-slate-400 mt-4">
-            * Ensure this physical document is returned signed to the
-            maintenance department upon completion.
+            <div className="border border-black p-3 bg-slate-50/30 rounded">
+              <span className="block text-[10px] text-slate-500 font-bold uppercase mb-8">
+                REVIEWED BY (SUPERVISOR)
+              </span>
+              <div className="border-t border-black pt-1 flex justify-between">
+                <span>Sign:</span>
+                <span>Date:</span>
+              </div>
+            </div>
+
+            <div className="border border-black p-3 bg-slate-50/30 rounded">
+              <span className="block text-[10px] text-slate-500 font-bold uppercase mb-8">
+                QUALITY ASSURANCE SIGN-OFF
+              </span>
+              <div className="border-t border-black pt-1 flex justify-between">
+                <span>Sign:</span>
+                <span>Date:</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

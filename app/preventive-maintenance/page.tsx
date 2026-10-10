@@ -1,6 +1,7 @@
+// PARTEA 1 DIN 6
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
@@ -8,45 +9,57 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Search,
-  ChevronUp,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
-  Download,
-  CalendarDays,
-  CheckSquare,
-  Eye,
   Layers,
   Hourglass,
-  X,
-  User,
-  FileText,
-  Loader2,
+  CheckSquare,
+  Activity,
+  Percent,
+  ArrowLeft,
+  ClipboardList,
+  ArrowRight,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
 interface PMTask {
   id: string;
   tool_number: string;
+  equipment_node_id: string | null;
+  workcenter: string | null;
   equipment: string;
   sub_equipment: string;
   action: string;
   frequency: string;
+  maintenance_equipment: string | null;
+  operation: string | null;
+  control_method: string | null;
   technician: string;
+  estimated_time: any | null;
   status: "OPEN" | "DUE_SOON" | "OVERDUE" | "COMPLETED";
+  priority: string | null;
   last_completed_at: string | null;
   next_due_at: string | null;
+  remarks: string | null;
   part_reference: string | null;
+  required_material: string | null;
   estimated_minutes: number | null;
-  created_at?: string;
 }
 
-// Interfață nouă pentru citirea tehnicienilor din tabelă
-interface Technician {
+interface WorkOrder {
   id: string;
-  name: string;
+  status: string;
 }
 
 const calculateStatus = (nextDueAt: string | null): PMTask["status"] => {
@@ -64,339 +77,121 @@ const calculateStatus = (nextDueAt: string | null): PMTask["status"] => {
   if (dueData <= sevenDaysFromNow) return "DUE_SOON";
   return "OPEN";
 };
-
-const calculateNextDueDate = (frequencyCode: string): string => {
-  const code = String(frequencyCode || "")
-    .trim()
-    .toUpperCase();
-  const value = parseInt(code.replace(/[^0-9]/g, ""), 10) || 1;
-  const unit = code.replace(/[0-9]/g, "");
-  const nextDate = new Date();
-
-  switch (unit) {
-    case "Z":
-      nextDate.setDate(nextDate.getDate() + value);
-      break;
-    case "S":
-      nextDate.setDate(nextDate.getDate() + value * 7);
-      break;
-    case "L":
-      nextDate.setMonth(nextDate.getMonth() + value);
-      break;
-    case "A":
-      nextDate.setFullYear(nextDate.getFullYear() + value);
-      break;
-    default:
-      nextDate.setMonth(nextDate.getMonth() + 1);
-      break;
-  }
-  return nextDate.toISOString().split("T")[0];
-};
-
+// PARTEA 2 DIN 6
 export default function PreventiveMaintenanceDashboard() {
-  const [tasks, setTasks] = useState<PMTask[]>([]);
-  const [completedThisMonth, setCompletedThisMonth] = useState(0);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [importing, setImporting] = useState<boolean>(false);
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [importSummary, setImportSummary] = useState<{
-    imported: number;
-    skipped: number;
-  } | null>(null);
-  const [selectedTask, setSelectedTask] = useState<PMTask | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [sortColumn, setSortColumn] = useState<keyof PMTask>("tool_number");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const itemsPerPage = 10;
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // --- STĂRI NOI PENTRU OPTIUNEA COMPLETE PM MODAL ---
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [isCompleteModalOpen, setIsCompleteModalOpen] =
-    useState<boolean>(false);
-  const [taskToComplete, setTaskToComplete] = useState<PMTask | null>(null);
-  const [selectedTechId, setSelectedTechId] = useState<string>("");
-  const [remarks, setRemarks] = useState<string>("");
-  const [modalError, setModalError] = useState<string>("");
   const fetchTasks = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: supabaseError } = await supabase
-        .from("pm_tasks")
-        .select("*");
-      if (supabaseError) throw supabaseError;
+      // Extragere exclusivă din tabela work_orders pentru generarea panoului de analiză
+      const { data: woData, error: woError } = await supabase
+        .from("work_orders")
+        .select("id, status");
+      if (woError) throw woError;
 
-      const processedTasks = (data || []).map((task: any) => {
-        const currentStatus =
-          task.status === "COMPLETED"
-            ? "COMPLETED"
-            : calculateStatus(task.next_due_at);
-        return { ...task, status: currentStatus };
-      });
-      setTasks(processedTasks);
-
-      // Populare dropdown din tabela technicians ordonați alfabetic
-      const { data: techData, error: techError } = await supabase
-        .from("technicians")
-        .select("id, name")
-        .order("name", { ascending: true });
-
-      if (!techError && techData) {
-        setTechnicians(techData);
-      }
+      setWorkOrders(woData || []);
     } catch (err: any) {
       setError(err.message || "A apărut o eroare la preluarea datelor.");
     } finally {
       setLoading(false);
     }
-    const currentMonth = new Date().toISOString().slice(0, 7);
-
-    const { data: historyData } = await supabase
-      .from("pm_history")
-      .select("created_at");
-
-    const completedCount =
-      historyData?.filter((item) => item.created_at?.startsWith(currentMonth))
-        .length || 0;
-
-    setCompletedThisMonth(completedCount);
   };
 
   useEffect(() => {
     fetchTasks();
   }, []);
-
-  // Handler nou care deschide modalul în loc să execute direct
-  const handleOpenCompleteModal = (task: PMTask) => {
-    setTaskToComplete(task);
-    setSelectedTechId("");
-    setRemarks("");
-    setModalError("");
-    setIsCompleteModalOpen(true);
-  };
-
-  // Logica de salvare din interiorul modalului cu validările cerute
-  const handleCompleteTaskSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskToComplete) return;
-
-    // Cerința 8: Verificare dacă tehnicianul este selectat
-    if (!selectedTechId) {
-      setModalError(
-        "Please select the technician who performed the maintenance.",
-      );
-      return;
-    }
-
-    setActionLoadingId(taskToComplete.id);
-    setModalError("");
-    const todayStr = new Date().toISOString().split("T")[0];
-    const nextDueStr = calculateNextDueDate(taskToComplete.frequency);
-    const updatedStatus = calculateStatus(nextDueStr);
-
-    const activeTech = technicians.find(
-      (t) => String(t.id) === String(selectedTechId),
-    );
-    const technicianName = activeTech ? activeTech.name : "";
-
-    try {
-      // Cerința 4 & 5: Salvare completă și auditare în tabela pm_history
-      const { error: historyErr } = await supabase.from("pm_history").insert({
-        pm_task_id: taskToComplete.id,
-        tool_number: taskToComplete.tool_number,
-        equipment: taskToComplete.equipment,
-        sub_equipment: taskToComplete.sub_equipment,
-        action: taskToComplete.action,
-        technician_id: selectedTechId,
-        technician_name: technicianName,
-        completed_by: technicianName, // Se păstrează compatibilitatea cu versiunile vechi
-        completed_at: todayStr,
-        result: "COMPLETED",
-        remarks: remarks.trim() || null,
-      });
-
-      if (historyErr) throw historyErr;
-
-      // Actualizare stare în tabelul principal de sarcini active
-      const { error: updateErr } = await supabase
-        .from("pm_tasks")
-        .update({
-          last_completed_at: todayStr,
-          next_due_at: nextDueStr,
-          status: updatedStatus,
-        })
-        .eq("id", taskToComplete.id);
-      if (updateErr) throw updateErr;
-
-      setIsCompleteModalOpen(false);
-      setTaskToComplete(null);
-      await fetchTasks();
-    } catch (err: any) {
-      setModalError(
-        err.message || "Eroare la salvarea finalizării mentenanței.",
-      );
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    setError(null);
-    setImportSummary(null);
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const workbook = XLSX.read(bstr, { type: "binary" });
-        let importedCount = 0;
-        let skippedCount = 0;
-        const tasksToInsert: any[] = [];
-
-        const { data: existingTasks, error: fetchErr } = await supabase
-          .from("pm_tasks")
-          .select("tool_number, equipment, sub_equipment, action");
-        if (fetchErr) throw fetchErr;
-
-        const existingSet = new Set(
-          (existingTasks || []).map(
-            (t) =>
-              `${String(t.tool_number || "")
-                .trim()
-                .toLowerCase()}|${String(t.equipment || "")
-                .trim()
-                .toLowerCase()}|${String(t.sub_equipment || "")
-                .trim()
-                .toLowerCase()}|${String(t.action || "")
-                .trim()
-                .toLowerCase()}`,
-          ),
-        );
-
-        for (const sheetName of workbook.SheetNames) {
-          const worksheet = workbook.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
-            header: 1,
-            defval: "",
-          });
-
-          let isFirstRow = true;
-          for (const row of rows) {
-            if (isFirstRow) {
-              isFirstRow = false;
-              continue;
-            }
-            if (!row || row.length === 0) continue;
-
-            const cleanValue = (val: any): string => {
-              if (val === undefined || val === null) return "";
-              const str = String(val).trim();
-              return str === "-" ? "" : str;
-            };
-
-            const workcenter = cleanValue(row[0]);
-          }
-        }
-      } catch (err: any) {
-        setError(err.message || "Eroare la importul fișierului.");
-      } finally {
-        setImporting(false);
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  // --- LOGICĂ INTERFAȚĂ FILTRARE / SORTARE ---
-  const handleSort = (column: keyof PMTask) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortColumn(column);
-      setSortDirection("asc");
-    }
-  };
-
-  const filteredTasks = useMemo(() => {
-    const search = searchTerm.toLowerCase();
-
-    return tasks
-      .filter((task) => {
-        const matchesSearch =
-          (task.tool_number || "").toLowerCase().includes(search) ||
-          (task.equipment || "").toLowerCase().includes(search) ||
-          (task.sub_equipment || "").toLowerCase().includes(search) ||
-          (task.action || "").toLowerCase().includes(search);
-
-        const matchesStatus =
-          statusFilter === "ALL" || task.status === statusFilter;
-
-        return matchesSearch && matchesStatus;
-      })
-      .sort((a, b) => {
-        const valA = String(a[sortColumn] || "");
-        const valB = String(b[sortColumn] || "");
-
-        if (valA < valB) return sortDirection === "asc" ? -1 : 1;
-        if (valA > valB) return sortDirection === "asc" ? 1 : -1;
-        return 0;
-      });
-  }, [tasks, searchTerm, statusFilter, sortColumn, sortDirection]);
-
-  const totalPages = Math.ceil(filteredTasks.length / itemsPerPage) || 1;
-  const paginatedTasks = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredTasks.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredTasks, currentPage]);
-
+  // PARTEA 3 DIN 6
   const metrics = useMemo(() => {
-    const total = tasks.length;
-    const overdue = tasks.filter((t) => t.status === "OVERDUE").length;
-    const dueSoon = tasks.filter((t) => t.status === "DUE_SOON").length;
-    return { total, overdue, dueSoon };
-  }, [tasks]);
+    const total = workOrders.length;
+    const open = workOrders.filter(
+      (wo) => String(wo.status).toUpperCase() === "OPEN",
+    ).length;
+    const inProgress = workOrders.filter(
+      (wo) => String(wo.status).toUpperCase() === "IN_PROGRESS",
+    ).length;
+    const completed = workOrders.filter(
+      (wo) => String(wo.status).toUpperCase() === "COMPLETED",
+    ).length;
 
+    // WO Completion Rate % -> (COMPLETED / TOTAL) * 100
+    const completionRate =
+      total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    // Maintenance Health Score formula -> (COMPLETED + IN_PROGRESS * 0.5) / TOTAL * 100
+    const healthScore =
+      total > 0
+        ? Math.round(((completed + inProgress * 0.5) / total) * 100)
+        : 100;
+
+    let healthBadge = {
+      text: "Excellent",
+      color: "bg-green-50 text-green-700 border-green-100",
+    };
+    if (healthScore >= 70 && healthScore <= 89) {
+      healthBadge = {
+        text: "Good",
+        color: "bg-blue-50 text-blue-700 border-blue-100",
+      };
+    } else if (healthScore >= 50 && healthScore <= 69) {
+      healthBadge = {
+        text: "Warning",
+        color: "bg-amber-50 text-amber-700 border-amber-100",
+      };
+    } else if (healthScore < 50) {
+      healthBadge = {
+        text: "Critical",
+        color: "bg-red-50 text-red-700 border-red-100",
+      };
+    }
+
+    const chartData = [
+      { name: "OPEN", value: open, color: "#3b82f6" },
+      { name: "IN PROGRESS", value: inProgress, color: "#f59e0b" },
+      { name: "COMPLETED", value: completed, color: "#22c55e" },
+    ];
+
+    return {
+      total,
+      open,
+      inProgress,
+      completed,
+      completionRate,
+      healthScore,
+      healthBadge,
+      chartData,
+    };
+  }, [workOrders]);
+  // PARTEA 4 DIN 6
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 bg-slate-50 min-h-screen text-slate-800">
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg flex items-start gap-2">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-500 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Preventive Maintenance
+            Preventive Maintenance Dashboard
           </h1>
           <p className="text-slate-500 mt-1">
-            Monitorizarea și gestionarea mentenanței preventive utilaje.
+            Analiza performanței de execuție bazată exclusiv pe fluxul de lucru
+            Work Orders.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          {/* ==========================================================
-              [MODIFICARE] BUTON NAVIGARE CĂTRE ISTORIC WORK ORDERS
-             ========================================================== */}
+          {/* Reintegrarea butonului de redirecționare înapoi către Work Orders */}
           <Link
             href="/work-orders/list"
             className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg shadow-sm transition-colors text-sm font-medium"
           >
-            <svg
-              xmlns="http://w3.org"
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-              />
-            </svg>
-            Work Orders History
+            <ArrowRight className="w-4 h-4" />
+            Work Orders
           </Link>
 
           <button
@@ -405,400 +200,165 @@ export default function PreventiveMaintenanceDashboard() {
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg shadow-sm transition-colors text-sm font-medium disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
+            Refresh Data
           </button>
         </div>
       </div>
-
-      {/* Grid Status Metrics Cards */}
+      {/* Primul rând de carduri KPI calculate din work_orders */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-            <Layers className="w-6 h-6" />
+          <div className="p-3 bg-slate-100 text-slate-600 rounded-lg">
+            <ClipboardList className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Total PM Tasks</p>
+            <p className="text-sm font-medium text-slate-500">
+              Total Work Orders
+            </p>
             <p className="text-2xl font-bold text-slate-900">{metrics.total}</p>
           </div>
         </div>
+
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-red-50 text-red-600 rounded-lg">
-            <AlertCircle className="w-6 h-6" />
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+            <Clock className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Overdue Tasks</p>
-            <p className="text-2xl font-bold text-slate-900">
-              {metrics.overdue}
+            <p className="text-sm font-medium text-slate-500">
+              Open Work Orders
             </p>
+            <p className="text-2xl font-bold text-slate-900">{metrics.open}</p>
           </div>
         </div>
+
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
           <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
             <Hourglass className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Due Soon Tasks</p>
+            <p className="text-sm font-medium text-slate-500">
+              In Progress WOs
+            </p>
             <p className="text-2xl font-bold text-slate-900">
-              {metrics.dueSoon}
+              {metrics.inProgress}
             </p>
           </div>
         </div>
+
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+            <Percent className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-500">
+              WO Completion Rate
+            </p>
+            <p className="text-2xl font-bold text-slate-900">
+              {metrics.completionRate}%
+            </p>
+          </div>
+        </div>
+      </div>
+      {/* Al doilea rând de carduri KPI și Health Score */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
           <div className="p-3 bg-green-50 text-green-600 rounded-lg">
             <CheckSquare className="w-6 h-6" />
           </div>
           <div>
             <p className="text-sm font-medium text-slate-500">
-              Completed This Month
+              Completed Work Orders
             </p>
             <p className="text-2xl font-bold text-slate-900">
-              {completedThisMonth}
+              {metrics.completed}
             </p>
           </div>
         </div>
-      </div>
-      {/* Search & Filters Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search by tool, equipment, sub-equipment or action..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          />
-        </div>
-        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          {["ALL", "OPEN", "DUE_SOON", "OVERDUE", "COMPLETED"].map((status) => (
-            <button
-              key={status}
-              onClick={() => {
-                setStatusFilter(status);
-                setCurrentPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                statusFilter === status
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {status.replace("_", " ")}
-            </button>
-          ))}
-        </div>
-      </div>
 
-      {/* Main Table Section */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider select-none">
-                {[
-                  { label: "Tool No.", key: "tool_number" },
-                  { label: "Equipment", key: "equipment" },
-                  { label: "Sub Equipment", key: "sub_equipment" },
-                  { label: "Action Description", key: "action" },
-                  { label: "Freq", key: "frequency" },
-                  { label: "Status", key: "status" },
-                  { label: "Next Due", key: "next_due_at" },
-                ].map((col) => (
-                  <th
-                    key={col.key}
-                    onClick={() => handleSort(col.key as keyof PMTask)}
-                    className="p-4 cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {sortColumn === col.key ? (
-                        sortDirection === "asc" ? (
-                          <ChevronUp className="w-3 h-3" />
-                        ) : (
-                          <ChevronDown className="w-3 h-3" />
-                        )
-                      ) : null}
-                    </div>
-                  </th>
-                ))}
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-sm text-slate-700">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400">
-                    Loading preventive tasks...
-                  </td>
-                </tr>
-              ) : paginatedTasks.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400">
-                    No matching tasks found.
-                  </td>
-                </tr>
-              ) : (
-                paginatedTasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className="hover:bg-slate-50/40 transition-colors"
-                  >
-                    <td className="p-4 font-mono font-medium text-xs whitespace-nowrap">
-                      {task.tool_number}
-                    </td>
-                    <td className="p-4 font-medium text-slate-900">
-                      {task.equipment}
-                    </td>
-                    <td className="p-4 text-slate-600">
-                      {task.sub_equipment || "-"}
-                    </td>
-                    <td className="p-4 max-w-xs truncate" title={task.action}>
-                      {task.action}
-                    </td>
-                    <td className="p-4 font-semibold text-xs text-slate-500">
-                      {task.frequency}
-                    </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          task.status === "OVERDUE"
-                            ? "bg-red-50 text-red-700 border border-red-100"
-                            : task.status === "DUE_SOON"
-                              ? "bg-amber-50 text-amber-700 border border-amber-100"
-                              : task.status === "COMPLETED"
-                                ? "bg-green-50 text-green-700 border border-green-100"
-                                : "bg-blue-50 text-blue-700 border border-blue-100"
-                        }`}
-                      >
-                        {task.status === "OVERDUE" && (
-                          <AlertCircle className="w-3 h-3" />
-                        )}
-                        {task.status === "DUE_SOON" && (
-                          <Clock className="w-3 h-3" />
-                        )}
-                        {task.status === "COMPLETED" && (
-                          <CheckCircle2 className="w-3 h-3" />
-                        )}
-                        {task.status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="p-4 whitespace-nowrap font-medium text-xs">
-                      {task.next_due_at
-                        ? new Date(task.next_due_at).toLocaleDateString("ro-RO")
-                        : "-"}
-                    </td>
-                    <td className="p-4 text-right whitespace-nowrap space-x-1">
-                      <button
-                        onClick={() => setSelectedTask(task)}
-                        className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleOpenCompleteModal(task)}
-                        disabled={actionLoadingId === task.id}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
-                      >
-                        Complete PM
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {/* Pagination Section */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-slate-500">
-            Showing{" "}
-            <span className="font-semibold">{paginatedTasks.length}</span> of{" "}
-            <span className="font-semibold">{filteredTasks.length}</span> items
-          </p>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-              disabled={currentPage === 1 || loading}
-              className="p-2 border rounded-lg bg-white disabled:opacity-40"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-medium text-slate-700">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-              disabled={currentPage === totalPages || loading}
-              className="p-2 border rounded-lg bg-white disabled:opacity-40"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Existing View Task Details Modal */}
-      {selectedTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border">
-            <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-blue-600" /> PM Task
-                Specifications
-              </h3>
-              <button
-                onClick={() => setSelectedTask(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-slate-100 text-slate-800 rounded-lg">
+              <Activity className="w-6 h-6" />
             </div>
-            <div className="p-6 space-y-3 text-sm">
-              <p>
-                <strong>Tool Number:</strong> {selectedTask.tool_number}
+            <div>
+              <p className="text-sm font-medium text-slate-500">
+                Maintenance Health Score
               </p>
-              <p>
-                <strong>Equipment:</strong> {selectedTask.equipment}
-              </p>
-              <p>
-                <strong>Sub Equipment:</strong>{" "}
-                {selectedTask.sub_equipment || "-"}
-              </p>
-              <p>
-                <strong>Action required:</strong> {selectedTask.action}
-              </p>
-              <p>
-                <strong>Frequency:</strong> {selectedTask.frequency}
-              </p>
-              <p>
-                <strong>Part Reference:</strong>{" "}
-                {selectedTask.part_reference || "-"}
-              </p>
-              <p>
-                <strong>Est. Minutes:</strong>{" "}
-                {selectedTask.estimated_minutes || "-"}
+              <p className="text-3xl font-bold text-slate-900">
+                {metrics.healthScore}%
               </p>
             </div>
           </div>
+          <span
+            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${metrics.healthBadge.color}`}
+          >
+            {metrics.healthBadge.text}
+          </span>
         </div>
-      )}
-
-      {/* --- NOUL MODAL DE DETALII CLOSING & AUDIT (COMPLETE PM) --- */}
-      {isCompleteModalOpen && taskToComplete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col animate-in zoom-in-95 duration-150">
-            <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-              <div className="flex items-center gap-2 text-slate-900 font-semibold">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                <span>Execution Details & Close PM</span>
-              </div>
-              <button
-                onClick={() =>
-                  !actionLoadingId && setIsCompleteModalOpen(false)
-                }
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50"
-                disabled={!!actionLoadingId}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleCompleteTaskSubmit}
-              className="flex-1 flex flex-col"
-            >
-              <div className="p-6 space-y-4 flex-1">
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1 text-slate-600">
-                  <p>
-                    <strong>Equipment:</strong> {taskToComplete.equipment} (
-                    {taskToComplete.tool_number})
-                  </p>
-                  <p className="line-clamp-2">
-                    <strong>Action:</strong> {taskToComplete.action}
-                  </p>
-                </div>
-
-                {modalError && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
-                    <span>{modalError}</span>
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-slate-400" />
-                    Technician <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={selectedTechId}
-                    onChange={(e) => {
-                      setSelectedTechId(e.target.value);
-                      if (e.target.value) setModalError("");
-                    }}
-                    className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                    disabled={!!actionLoadingId}
-                  >
-                    <option value="">-- Select Technician --</option>
-                    {technicians.map((tech) => (
-                      <option key={tech.id} value={tech.id}>
-                        {tech.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                    <FileText className="w-3.5 h-3.5 text-slate-400" />
-                    Remarks / Comments{" "}
-                    <span className="text-slate-400 font-normal">
-                      (Optional)
-                    </span>
-                  </label>
-                  <textarea
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                    placeholder="Adaugă detalii relevante despre intervenție..."
-                    rows={3}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
-                    disabled={!!actionLoadingId}
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCompleteModalOpen(false)}
-                  disabled={!!actionLoadingId}
-                  className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+      </div>
+      {/* Secțiune Grafice Analytics (Pie Chart & Bar Chart) bazate pe Work Orders */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Graficul 1: Pie Chart - PM Status Distribution */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[350px]">
+          <h3 className="text-base font-bold text-slate-900 mb-4">
+            PM Status Distribution
+          </h3>
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={metrics.chartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) =>
+                    `${name} ${((percent || 0) * 100).toFixed(0)}%`
+                  }
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!!actionLoadingId}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow transition-colors flex items-center gap-1.5"
-                >
-                  {actionLoadingId ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save & Log PM"
-                  )}
-                </button>
-              </div>
-            </form>
+                  {metrics.chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => [`${value} Comenzi`, "Volum"]} />
+                <Legend verticalAlign="bottom" height={36} />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         </div>
-      )}
+        {/* Graficul 2: Bar Chart - PM Status Overview */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[350px]">
+          <h3 className="text-base font-bold text-slate-900 mb-4">
+            PM Status Overview
+          </h3>
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsBarChart
+                data={metrics.chartData}
+                margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                <Tooltip
+                  formatter={(value) => [`${value} Comenzi`, "Cantitate"]}
+                />
+                <Bar dataKey="value" radius={4}>
+                  {metrics.chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -150,13 +150,7 @@ export default function Sidebar() {
             badge: kpis.machinesCount,
             badgeType: "neutral",
           },
-          {
-            name: "Repairs",
-            href: "/repairs",
-            icon: Wrench,
-            badge: kpis.openRepairs,
-            badgeType: "warning",
-          },
+          
         ],
       },
       {
@@ -174,7 +168,7 @@ export default function Sidebar() {
             href: "/preventive-maintenance",
             icon: Wrench,
           },
-          { name: "PM History", href: "/pm-history", icon: History },
+
           { name: "Technical Team", href: "/technicians", icon: Users },
           { name: "Improvements", href: "/improvements", icon: Lightbulb },
           {

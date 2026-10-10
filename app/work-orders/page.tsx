@@ -73,21 +73,29 @@ export default function WorkOrdersPage() {
   // Încărcare completă, fără limitări sau filtre implicite ascunse
   // ==========================================================
   async function loadTools() {
-    const { data, error } = await supabase
-      .from("pm_tasks")
-      .select("tool_number");
+    try {
+      // Apelăm funcția SQL creată direct pe server.
+      // Serverul va executa DISTINCT și ne va trimite doar cele 21 de rezultate unice!
+      const { data, error } = await supabase.rpc("get_unique_pm_tools");
 
-    if (error) {
-      console.error("Error loading tools:", error.message);
-      return;
+      if (error) {
+        console.error("RPC Error loading tools:", error.message);
+        return;
+      }
+
+      // Protecție simplă pentru curățare string-uri
+      const uniqueTools = (data || [])
+        .map((item: any) => String(item.tool_number || "").trim())
+        .filter(Boolean);
+
+      console.log("=== RPC TOOL AUDIT ===");
+      console.log("Utilaje unice primite prin RPC:", uniqueTools);
+
+      // Salvare în starea componentei (deja sortate de server)
+      setTools(uniqueTools);
+    } catch (err: any) {
+      console.error("Catch Block Error:", err.message);
     }
-
-    // Extragere valori unice și curățare de spații albe accidentale
-    const uniqueTools = [
-      ...new Set((data || []).map((x) => x.tool_number?.trim())),
-    ].filter(Boolean);
-
-    setTools(uniqueTools.sort());
   }
 
   async function loadTasks() {
@@ -246,29 +254,43 @@ export default function WorkOrdersPage() {
           [MODIFICARE] BARĂ ORIZONTALĂ SUPERIOARĂ PENTRU UTILAJE (TOOLS)
          ========================================================== */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3 shadow-sm">
-        <label className="block text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
-          Select Active Industrial Tool / Equipment
-        </label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex justify-between items-center">
+          <label className="block text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
+            Select Active Industrial Tool / Equipment
+          </label>
+          {/* Afișare temporară în UI pentru verificarea volumului total încărcat */}
+          <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+            Total Tools Loaded: {tools.length}
+          </span>
+        </div>
+
+        {/* 
+          Container adaptiv: Dacă sunt peste 10 utilaje, se folosește un grid dens pe coloane multiple
+          și se adaugă un scroll orizontal (overflow-x-auto) pentru ecranele înguste ca protecție.
+        */}
+        <div className="w-full overflow-x-auto pb-2">
           {tools.length === 0 ? (
             <span className="text-xs font-medium text-slate-400 italic">
               Loading tools from database...
             </span>
           ) : (
-            tools.map((tool) => (
-              <button
-                key={tool}
-                type="button"
-                onClick={() => setSelectedTool(tool)}
-                className={`px-4 py-3 rounded-lg text-sm font-bold tracking-tight border transition-all ${
-                  selectedTool === tool
-                    ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100 scale-[1.02]"
-                    : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"
-                }`}
-              >
-                {tool}
-              </button>
-            ))
+            <div className="grid grid-cols-4 md:grid-cols-8 lg:grid-cols-10 gap-2 min-w-[640px] md:min-w-none">
+              {tools.map((tool) => (
+                <button
+                  key={tool}
+                  type="button"
+                  onClick={() => setSelectedTool(tool)}
+                  className={`px-3 py-3 rounded-lg text-sm font-bold tracking-tight border text-center transition-all truncate ${
+                    selectedTool === tool
+                      ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100 scale-[1.02]"
+                      : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"
+                  }`}
+                  title={tool}
+                >
+                  {tool}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
