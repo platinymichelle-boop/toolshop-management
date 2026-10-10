@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
   Wrench,
@@ -374,6 +375,30 @@ export default function PreventiveMaintenanceDashboard() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          {/* ==========================================================
+              [MODIFICARE] BUTON NAVIGARE CĂTRE ISTORIC WORK ORDERS
+             ========================================================== */}
+          <Link
+            href="/work-orders/list"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg shadow-sm transition-colors text-sm font-medium"
+          >
+            <svg
+              xmlns="http://w3.org"
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+              />
+            </svg>
+            Work Orders History
+          </Link>
+
           <button
             onClick={fetchTasks}
             disabled={loading}
