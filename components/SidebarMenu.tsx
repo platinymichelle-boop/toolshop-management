@@ -60,9 +60,9 @@ export default function SidebarMenu({
         "/breakdown",
         "/customer-claims",
         "/live-factory",
+        "/spare-parts",
       ].includes(pathname),
       MAINTENANCE: [
-        "/spare-parts",
         "/technicians",
         "/improvements",
         "/preventive-maintenance",

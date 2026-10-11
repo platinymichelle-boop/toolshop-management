@@ -138,7 +138,7 @@ export default function Sidebar() {
   };
 
   // Structura Meniului memoizată
-  const navigationSections = useMemo(
+  const navigationSections: any[] = useMemo(
     () => [
       {
         title: "Operations",
@@ -150,12 +150,6 @@ export default function Sidebar() {
             badge: kpis.machinesCount,
             badgeType: "neutral",
           },
-          
-        ],
-      },
-      {
-        title: "Maintenance",
-        items: [
           {
             name: "Spare Parts",
             href: "/spare-parts",
@@ -163,6 +157,11 @@ export default function Sidebar() {
             badge: kpis.lowStockParts > 0 ? kpis.lowStockParts : null,
             badgeType: "danger",
           },
+        ],
+      },
+      {
+        title: "Maintenance",
+        items: [
           {
             name: "Preventive Maintenance",
             href: "/preventive-maintenance",
@@ -259,7 +258,7 @@ export default function Sidebar() {
               </div>
             ) : (
               <nav className="space-y-7">
-                {navigationSections.map((section) => (
+                {navigationSections.map((section: any) => (
                   <div key={section.title} className="space-y-1.5">
                     {!isCollapsed ? (
                       <h3 className="px-3 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 tracking-widest uppercase transition-opacity duration-200">
@@ -269,50 +268,68 @@ export default function Sidebar() {
                       <div className="border-t border-zinc-100 dark:border-zinc-900 my-2" />
                     )}
                     <ul className="space-y-1">
-                      {section.items.map((item) => {
-                        const isActive = pathname === item.href;
-                        return (
-                          <li key={item.name}>
-                            <Link
-                              href={item.href}
-                              title={isCollapsed ? item.name : undefined}
-                              className={`
-                                group relative flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
-                                ${isCollapsed ? "justify-center" : "justify-between"}
-                                ${
-                                  isActive
-                                    ? "bg-gradient-to-r from-emerald-50 to-zinc-50 dark:from-emerald-950/30 dark:to-zinc-900/30 text-emerald-700 dark:text-emerald-400 font-semibold border border-emerald-100/50 dark:border-emerald-900/30 before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:bg-emerald-500 before:rounded-r-md"
-                                    : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50 hover:text-zinc-800 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
-                                }
-                              `}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <item.icon
-                                  className={`h-4 w-4 shrink-0 transition-transform group-hover:scale-110 duration-200 ${isActive ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"}`}
-                                />
-                                {!isCollapsed && (
-                                  <span className="truncate">{item.name}</span>
-                                )}
-                              </div>
+                      {section.items.map(
+                        (item: {
+                          name: string;
+                          href: string;
+                          icon: React.ComponentType<{ className?: string }>;
+                          badge?: string | number | null;
+                          badgeType?: "danger" | "warning" | "neutral";
+                        }) => {
+                          const isActive = pathname === item.href;
+                          // Salvarea iconiței într-o componentă cu literă mare pentru validare JSX
+                          const Icon = item.icon;
 
-                              {!isCollapsed &&
-                                item.badge !== undefined &&
-                                item.badge !== null && (
-                                  <span
-                                    className={`
-                                    text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wide transition-all shrink-0
-                                    ${item.badgeType === "danger" ? "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30" : ""}
-                                    ${item.badgeType === "warning" ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30" : ""}
-                                    ${item.badgeType === "neutral" ? "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200/60 dark:border-zinc-800" : ""}
-                                  `}
-                                  >
-                                    {item.badge}
-                                  </span>
-                                )}
-                            </Link>
-                          </li>
-                        );
-                      })}
+                          return (
+                            <li key={item.name}>
+                              <Link
+                                href={item.href}
+                                title={isCollapsed ? item.name : undefined}
+                                className={`
+                  group relative flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+                  ${isCollapsed ? "justify-center" : "justify-between"}
+                  ${
+                    isActive
+                      ? "bg-gradient-to-r from-emerald-50 to-zinc-50 dark:from-emerald-950/30 dark:to-zinc-900/30 text-emerald-700 dark:text-emerald-400 font-semibold border border-emerald-100/50 dark:border-emerald-900/30 before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:bg-emerald-500 before:rounded-r-md"
+                      : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50 hover:text-zinc-800 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
+                  }
+                `}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  {/* Utilizarea corectă a componentei ca element React */}
+                                  <Icon
+                                    className={`h-4 w-4 shrink-0 transition-transform group-hover:scale-110 duration-200 ${
+                                      isActive
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
+                                    }`}
+                                  />
+                                  {!isCollapsed && (
+                                    <span className="truncate">
+                                      {item.name}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {!isCollapsed &&
+                                  item.badge !== undefined &&
+                                  item.badge !== null && (
+                                    <span
+                                      className={`
+                        text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wide transition-all shrink-0
+                        ${item.badgeType === "danger" ? "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30" : ""}
+                        ${item.badgeType === "warning" ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30" : ""}
+                        ${item.badgeType === "neutral" ? "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200/60 dark:border-zinc-800" : ""}
+                      `}
+                                    >
+                                      {item.badge}
+                                    </span>
+                                  )}
+                              </Link>
+                            </li>
+                          );
+                        },
+                      )}
                     </ul>
                   </div>
                 ))}

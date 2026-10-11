@@ -33,6 +33,19 @@ interface WorkOrderAction {
   created_at: string;
   is_completed: boolean;
   completed_at?: string | null;
+  workcenter?: string | null;
+  equipment?: string | null;
+  sub_equipment?: string | null;
+  maintenance_equipment?: string | null;
+  operation?: string | null;
+  control_method?: string | null;
+  technician?: string | null;
+  estimated_time?: string | null;
+  estimated_minutes?: number | string | null;
+  part_reference?: string | null;
+  required_material?: string | null;
+  remarks?: string | null;
+  priority?: string | null;
 }
 
 export default function WorkOrderDetailsPage() {
@@ -54,6 +67,7 @@ export default function WorkOrderDetailsPage() {
       loadWorkOrderData();
     }
   }, [id]);
+
   async function loadWorkOrderData() {
     try {
       setIsLoading(true);
@@ -68,20 +82,73 @@ export default function WorkOrderDetailsPage() {
       if (woError) throw woError;
       setWorkOrder(woData);
 
-      // Pre-populează câmpurile formularului dacă ordinul este deja închis
       if (woData.completed_by) setCompletedBy(woData.completed_by);
       if (woData.completion_comments)
         setCompletionComments(woData.completion_comments);
 
-      // 2. Încarcă acțiunile corelate (inclusiv is_completed) din tabela copil
+      // 2. Încarcă acțiunile corelate din tabela copil
       const { data: actionsData, error: actionsError } = await supabase
         .from("work_order_actions")
-        .select("*")
+        .select(
+          "id, work_order_id, preventive_action_id, task_description, frequency, created_at, is_completed, completed_at",
+        )
         .eq("work_order_id", id)
         .order("id", { ascending: true });
 
       if (actionsError) throw actionsError;
-      setActions(actionsData || []);
+      const rawActions = actionsData || [];
+
+      // 3. Extrage ID-urile unice pm_task_id/preventive_action_id valide pentru filtrare
+      const pmTaskIds = Array.from(
+        new Set(rawActions.map((a) => a.preventive_action_id).filter(Boolean)),
+      );
+
+      let pmTasksMap: Record<number, any> = {};
+
+      if (pmTaskIds.length > 0) {
+        const { data: pmTasksData, error: pmTasksError } = await supabase
+          .from("pm_tasks")
+          .select(
+            `
+            id, workcenter, equipment, sub_equipment, maintenance_equipment, operation, 
+            control_method, technician, estimated_time, estimated_minutes, part_reference, 
+            required_material, remarks, priority
+          `,
+          )
+          .in("id", pmTaskIds);
+
+        if (pmTasksError) throw pmTasksError;
+
+        if (pmTasksData) {
+          pmTasksMap = pmTasksData.reduce((acc: Record<number, any>, curr) => {
+            acc[curr.id] = curr;
+            return acc;
+          }, {});
+        }
+      }
+
+      // 4. Combină seturile de date în frontend
+      const combinedActions = rawActions.map((action) => {
+        const matchingPmTask = pmTasksMap[action.preventive_action_id] || {};
+        return {
+          ...action,
+          workcenter: matchingPmTask.workcenter || null,
+          equipment: matchingPmTask.equipment || null,
+          sub_equipment: matchingPmTask.sub_equipment || null,
+          maintenance_equipment: matchingPmTask.maintenance_equipment || null,
+          operation: matchingPmTask.operation || null,
+          control_method: matchingPmTask.control_method || null,
+          technician: matchingPmTask.technician || null,
+          estimated_time: matchingPmTask.estimated_time || null,
+          estimated_minutes: matchingPmTask.estimated_minutes || null,
+          part_reference: matchingPmTask.part_reference || null,
+          required_material: matchingPmTask.required_material || null,
+          remarks: matchingPmTask.remarks || null,
+          priority: matchingPmTask.priority || null,
+        };
+      });
+
+      setActions(combinedActions);
     } catch (err: any) {
       alert(err.message || "Error loading work order specifications");
       router.push("/work-orders/list");
@@ -93,9 +160,6 @@ export default function WorkOrderDetailsPage() {
   const handlePrint = () => {
     window.print();
   };
-  // ==========================================================
-  // [MODIFICARE PASUL 6] - TRANZIȚIE STATUS: OPEN -> IN_PROGRESS
-  // ==========================================================
   async function startWorkOrder() {
     if (!workOrder || workOrder.status !== "OPEN") return;
     try {
@@ -117,9 +181,6 @@ export default function WorkOrderDetailsPage() {
     }
   }
 
-  // ==========================================================
-  // [MODIFICARE PASUL 6] - SALVARE CONTEXT DIGITAL TASK INDIVIDUAL
-  // ==========================================================
   async function toggleActionChecked(actionId: number, currentStatus: boolean) {
     if (!workOrder || workOrder.status !== "IN_PROGRESS") return;
     try {
@@ -134,7 +195,6 @@ export default function WorkOrderDetailsPage() {
 
       if (error) throw error;
 
-      // Actualizare optimistă locală în interfață pentru performanță
       setActions(
         actions.map((act) =>
           act.id === actionId ? { ...act, is_completed: nextStatus } : act,
@@ -145,20 +205,53 @@ export default function WorkOrderDetailsPage() {
     }
   }
 
-  // ==========================================================
-  // [MODIFICARE PASUL 6] - TRANZIȚIE STATUS: IN_PROGRESS -> COMPLETED
-  // ==========================================================
+  // CERINȚA 6 & 7: Executare Update în Batch prin clauza .in() pentru performanță
+  async function toggleAllActions() {
+    if (
+      !workOrder ||
+      workOrder.status !== "IN_PROGRESS" ||
+      actions.length === 0
+    )
+      return;
+
+    try {
+      const areAllCompleted = actions.every((act) => act.is_completed);
+      const nextStatus = !areAllCompleted;
+      const actionIds = actions.map((act) => act.id);
+      const timestamp = nextStatus ? new Date().toISOString() : null;
+
+      const { error } = await supabase
+        .from("work_order_actions")
+        .update({
+          is_completed: nextStatus,
+          completed_at: timestamp,
+        })
+        .in("id", actionIds);
+
+      if (error) throw error;
+
+      // Actualizare locală în stare reactivă
+      setActions(
+        actions.map((act) => ({
+          ...act,
+          is_completed: nextStatus,
+          completed_at: timestamp,
+        })),
+      );
+    } catch (err: any) {
+      alert(err.message || "Failed execution of global checklist transition");
+    }
+  }
+
   async function completeWorkOrder() {
     if (!workOrder || workOrder.status !== "IN_PROGRESS") return;
 
-    // 1. Validare: Toate taskurile trebuie să fie bifate obligatoriu
     const allChecked = actions.every((act) => act.is_completed);
     if (!allChecked) {
       alert("All preventive actions must be completed.");
       return;
     }
 
-    // 2. Validare: Numele tehnicianului este necesar la închidere
     if (!completedBy.trim()) {
       alert("Please provide the name of the technician completing the work.");
       return;
@@ -188,9 +281,6 @@ export default function WorkOrderDetailsPage() {
     }
   }
 
-  // ==========================================================
-  // [MODIFICARE PASUL 6] - CALCUL DINAMIC DURAȚĂ OPERAȚIE
-  // ==========================================================
   function calculateDuration(): string {
     if (!workOrder?.started_at || !workOrder?.completed_at) return "N/A";
     const start = new Date(workOrder.started_at).getTime();
@@ -204,25 +294,25 @@ export default function WorkOrderDetailsPage() {
     const mins = diffMins % 60;
     return `${hours}h ${mins}m`;
   }
-  if (isLoading) {
+
+  if (isLoading)
     return (
       <div className="p-6 max-w-7xl mx-auto font-medium text-slate-600 print:hidden">
         Loading specifications...
       </div>
     );
-  }
-
-  if (!workOrder) {
+  if (!workOrder)
     return (
       <div className="p-6 max-w-7xl mx-auto font-medium text-red-600 print:hidden">
         Work Order not found.
       </div>
     );
-  }
 
+  // Variabile de audit KPI utilizate în header-ul tabelului interactiv
+  const completedCount = actions.filter((act) => act.is_completed).length;
+  const isAllDone = actions.length > 0 && completedCount === actions.length;
   return (
     <>
-      {/* Componenta structurală de print industrial (Rămâne 100% Intactă) */}
       <WorkOrderPrint
         woNumber={workOrder.wo_number}
         toolNumber={workOrder.tool_number || workOrder.tool_id}
@@ -230,14 +320,9 @@ export default function WorkOrderDetailsPage() {
         scheduledDate={workOrder.scheduled_date}
         priority={workOrder.priority || "MEDIUM"}
         status={workOrder.status || "OPEN"}
-        actions={actions.map((a) => ({
-          id: a.id,
-          task_description: a.task_description,
-          frequency: a.frequency,
-        }))}
+        actions={actions}
       />
 
-      {/* INTERFAȚA DE APLICAȚIE - Ascunsă garantat în timpul tipăririi fizice */}
       <div className="p-6 max-w-7xl mx-auto space-y-6 print:hidden">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
           <div className="space-y-1">
@@ -256,19 +341,15 @@ export default function WorkOrderDetailsPage() {
           </div>
 
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-            {/* ==========================================================
-                [MODIFICARE PASUL 6] - BUTOANE AUTOMATE WORKFLOW DE STATUS
-               ========================================================== */}
             {workOrder.status === "OPEN" && (
               <button
                 onClick={startWorkOrder}
                 disabled={isUpdating}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm disabled:opacity-50"
               >
                 {isUpdating ? "Processing..." : "Start Work Order"}
               </button>
             )}
-
             {workOrder.status === "IN_PROGRESS" && (
               <button
                 onClick={completeWorkOrder}
@@ -278,13 +359,11 @@ export default function WorkOrderDetailsPage() {
                 {isUpdating ? "Processing..." : "Complete Work Order"}
               </button>
             )}
-
             {workOrder.status === "COMPLETED" && (
               <span className="inline-flex items-center px-4 py-2.5 rounded-lg text-sm font-black bg-green-100 text-green-800 border border-green-200 uppercase tracking-wide">
                 ✓ COMPLETED
               </span>
             )}
-
             <button
               onClick={handlePrint}
               className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg transition-colors border border-slate-200 flex items-center gap-2"
@@ -294,7 +373,7 @@ export default function WorkOrderDetailsPage() {
           </div>
         </div>
 
-        {/* PANOU INDUSTRIAL EXTINS - REPORTING & AUDIT TIMP */}
+        {/* PANOU INDUSTRIAL EXTINS */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="space-y-1">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -310,13 +389,7 @@ export default function WorkOrderDetailsPage() {
             </span>
             <div>
               <span
-                className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
-                  workOrder.status === "COMPLETED"
-                    ? "bg-green-100 text-green-800"
-                    : workOrder.status === "IN_PROGRESS"
-                      ? "bg-amber-100 text-amber-800"
-                      : "bg-blue-100 text-blue-800"
-                }`}
+                className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${workOrder.status === "COMPLETED" ? "bg-green-100 text-green-800" : workOrder.status === "IN_PROGRESS" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}
               >
                 {workOrder.status}
               </span>
@@ -338,7 +411,6 @@ export default function WorkOrderDetailsPage() {
               {calculateDuration()}
             </p>
           </div>
-
           <div className="space-y-1 border-t pt-2 md:border-t-0 md:pt-0">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Started Date
@@ -376,24 +448,47 @@ export default function WorkOrderDetailsPage() {
             </p>
           </div>
         </div>
-        {/* ==========================================================
-            [MODIFICARE PASUL 6] - TASK CHECKLIST INTERACTIV DIGITAL
-           ========================================================== */}
+
+        {/* INTERFAȚA CHECKLIST — MODIFICATĂ CU CHECKBOX MASTER ȘI KPI COUNTER */}
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="p-4 bg-slate-50 border-b border-slate-200">
-            <h2 className="font-bold text-slate-800 text-base">
-              Digital Execution Checklist
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {workOrder.status === "IN_PROGRESS"
-                ? "Bifează sarcinile pe măsură ce le execuți în teren."
-                : "Vizualizare istoric acțiuni preventive."}
-            </p>
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+            <div>
+              <h2 className="font-bold text-slate-800 text-base">
+                Digital Execution Checklist
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {workOrder.status === "IN_PROGRESS"
+                  ? "Bifează sarcinile pe măsură ce le execuți în teren."
+                  : "Vizualizare istoric acțiuni preventive."}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono font-bold bg-slate-200 text-slate-700 px-2 py-1 rounded">
+                Completed: {completedCount} / {actions.length} Tasks
+              </span>
+              {isAllDone && (
+                <span className="text-xs font-black text-green-700 bg-green-100 border border-green-200 px-2.5 py-1 rounded-md uppercase tracking-wide">
+                  ✅ All Tasks Completed
+                </span>
+              )}
+            </div>
           </div>
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 text-slate-400 text-xs font-bold uppercase bg-slate-50/50">
-                <th className="p-4 w-20 text-center">Status</th>
+                {/* CERINȚA 1 & 5: Checkbox Master poziționat pe coloana Status */}
+                <th className="p-4 w-28 text-center font-mono text-slate-600 bg-slate-100/50 border-r">
+                  <label className="flex items-center justify-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={workOrder.status !== "IN_PROGRESS"}
+                      checked={isAllDone}
+                      onChange={toggleAllActions}
+                      className="w-4 h-4 rounded cursor-pointer accent-green-600 disabled:cursor-not-allowed opacity-80"
+                    />
+                    <span className="text-[10px] tracking-tighter">ALL</span>
+                  </label>
+                </th>
                 <th className="p-4">Action / Task Description</th>
                 <th className="p-4 text-right pr-6">Frequency</th>
               </tr>
@@ -404,7 +499,7 @@ export default function WorkOrderDetailsPage() {
                   key={action.id}
                   className="hover:bg-slate-50/30 transition-colors"
                 >
-                  <td className="p-4 text-center">
+                  <td className="p-4 text-center border-r bg-slate-50/20">
                     <input
                       type="checkbox"
                       disabled={workOrder.status !== "IN_PROGRESS"}
@@ -412,11 +507,7 @@ export default function WorkOrderDetailsPage() {
                       onChange={() =>
                         toggleActionChecked(action.id, action.is_completed)
                       }
-                      className={`w-5 h-5 rounded cursor-pointer accent-green-600 transition-all ${
-                        workOrder.status !== "IN_PROGRESS"
-                          ? "cursor-not-allowed opacity-60"
-                          : ""
-                      }`}
+                      className={`w-5 h-5 rounded cursor-pointer accent-green-600 transition-all ${workOrder.status !== "IN_PROGRESS" ? "cursor-not-allowed opacity-60" : ""}`}
                     />
                   </td>
                   <td
@@ -433,16 +524,13 @@ export default function WorkOrderDetailsPage() {
           </table>
         </div>
 
-        {/* ==========================================================
-            [MODIFICARE PASUL 6] - COMPLETION SECTION (FORMULAR DIGITAL)
-           ========================================================== */}
+        {/* COMPLETION SECTION */}
         {(workOrder.status === "IN_PROGRESS" ||
           workOrder.status === "COMPLETED") && (
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
             <h2 className="font-bold text-slate-900 text-base border-b pb-2 uppercase tracking-wide text-sm font-mono text-slate-600">
               Section 2 - Work Completion Sign-Off
             </h2>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
@@ -458,7 +546,6 @@ export default function WorkOrderDetailsPage() {
                 />
               </div>
             </div>
-
             <div>
               <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                 Completion Comments / Notes
