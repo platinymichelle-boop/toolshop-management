@@ -168,6 +168,12 @@ export default function Sidebar() {
             icon: Wrench,
           },
 
+          {
+            name: "Weekly Planning",
+            href: "/weekly-maintenance",
+            icon: ClipboardCheck,
+          },
+
           { name: "Technical Team", href: "/technicians", icon: Users },
           { name: "Improvements", href: "/improvements", icon: Lightbulb },
           {

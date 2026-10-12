@@ -66,6 +66,7 @@ export default function SidebarMenu({
         "/technicians",
         "/improvements",
         "/preventive-maintenance",
+        "/weekly-maintenance",
         "/pm-history",
         "/fluid-management",
         "/budget-planner",
@@ -207,6 +208,14 @@ export default function SidebarMenu({
             >
               <Wrench className={iconClass("/preventive-maintenance")} />
               <span className="truncate">Preventive Maintenance</span>
+            </Link>
+
+            <Link
+              href="/weekly-maintenance"
+              className={linkClass("/weekly-maintenance")}
+            >
+              <ClipboardCheck className={iconClass("/weekly-maintenance")} />
+              <span className="truncate">Weekly Maintenance</span>
             </Link>
 
             <Link href="/pm-history" className={linkClass("/pm-history")}>
