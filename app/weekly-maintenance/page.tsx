@@ -11,7 +11,7 @@ interface PMTask {
   equipment: string;
   action: string;
   next_due_at: string;
-  estimated_minutes: number | null;
+  estimated_time: number | null;
   frequency: string;
 }
 
@@ -34,10 +34,11 @@ interface MaintenancePlan {
   status: string;
   week_number: number;
   year: number;
+  shift?: string; // Adăugat pentru suportul coloanei noi din Supabase
 }
 
 const DAYS_OF_WEEK = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
-const FREQUENCY_OPTIONS = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
+const FREQUENCY_OPTIONS = ["ALL", "WEEKLY", "MONTHLY", "YEARLY"];
 
 export default function WeeklyMaintenancePage() {
   const [machines, setMachines] = useState<GroupedMachine[]>([]);
@@ -55,7 +56,6 @@ export default function WeeklyMaintenancePage() {
     setCurrentYear(y);
     loadData(w, y, frequencyFilter);
   }, []);
-
   function getWeekNumber(date: Date) {
     const target = new Date(date.valueOf());
     const dayNr = (date.getDay() + 6) % 7;
@@ -67,24 +67,49 @@ export default function WeeklyMaintenancePage() {
     }
     return 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
   }
+
+  function getWeekDateRange(weekNum: number, yr: number) {
+    const fourthOfJanuary = new Date(yr, 0, 4);
+    const dayOfWeek = fourthOfJanuary.getDay();
+    const isoWeek1Monday = new Date(fourthOfJanuary);
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    isoWeek1Monday.setDate(fourthOfJanuary.getDate() - daysToSubtract);
+
+    const targetMonday = new Date(isoWeek1Monday);
+    targetMonday.setDate(isoWeek1Monday.getDate() + (weekNum - 1) * 7);
+
+    const targetSunday = new Date(targetMonday);
+    targetSunday.setDate(targetMonday.getDate() + 6);
+
+    const formatDate = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    };
+
+    const weekStart = formatDate(targetMonday);
+    const weekEnd = formatDate(targetSunday);
+
+    console.log(`Week Start: ${weekStart}`);
+    console.log(`Week End: ${weekEnd}`);
+
+    return { weekStart, weekEnd };
+  }
+
   async function loadData(w: number, y: number, freq: string) {
     setLoading(true);
+    getWeekDateRange(w, y);
     await Promise.all([loadAvailableTasks(freq), loadCurrentCalendar(w, y)]);
     setLoading(false);
   }
-
   async function loadAvailableTasks(freq: string) {
-    let query = supabase
-      .from("pm_tasks")
-      .select("*")
-      .lte("next_due_at", new Date().toISOString());
+    let query = supabase.from("pm_tasks").select("*");
 
-    if (freq === "DAILY") {
-      query = query.eq("frequency", "1Z");
-    } else if (freq === "WEEKLY") {
+    if (freq === "WEEKLY") {
       query = query.eq("frequency", "1S");
     } else if (freq === "MONTHLY") {
-      query = query.in("frequency", ["1L", "6L", "12L"]);
+      query = query.in("frequency", ["1L", "3L", "6L", "12L"]);
     } else if (freq === "YEARLY") {
       query = query.in("frequency", ["1A", "2A", "3A", "5A"]);
     }
@@ -112,35 +137,40 @@ export default function WeeklyMaintenancePage() {
           };
         }
         groups[task.tool_number].count += 1;
-        groups[task.tool_number].totalMinutes += task.estimated_minutes || 0;
+        groups[task.tool_number].totalMinutes += task.estimated_time || 0;
         if (task.frequency) {
           groups[task.tool_number].frequencies.add(task.frequency);
         }
       });
 
-      const groupedArr: GroupedMachine[] = Object.keys(groups).map(
-        (toolNum) => {
+      const sortedToolNumbers = Object.keys(groups).sort((a, b) =>
+        a.localeCompare(b),
+      );
+
+      const groupedArr: GroupedMachine[] = sortedToolNumbers.map(
+        (toolNum, idx) => {
           const freqArr = Array.from(groups[toolNum].frequencies);
           const displayFrequency =
             freqArr.length > 0 ? freqArr.join(", ") : "N/A";
+
+          // Strategia RRAS (Round Robin Auto Scheduler): Distribuie ciclic de la Luni la Vineri
+          const autoPlannedDay = DAYS_OF_WEEK[idx % DAYS_OF_WEEK.length];
 
           return {
             tool_number: toolNum,
             equipment: groups[toolNum].equipment,
             number_of_tasks: groups[toolNum].count,
             duration_minutes: groups[toolNum].totalMinutes,
-            planned_day: "MONDAY",
+            planned_day: autoPlannedDay,
             selected: false,
             frequency: displayFrequency,
           };
         },
       );
 
-      groupedArr.sort((a, b) => a.tool_number.localeCompare(b.tool_number));
       setMachines(groupedArr);
     }
   }
-
   async function loadCurrentCalendar(w: number, y: number) {
     const { data, error } = await supabase
       .from("weekly_maintenance_plans")
@@ -152,6 +182,7 @@ export default function WeeklyMaintenancePage() {
       setCalendarPlans(data as MaintenancePlan[]);
     }
   }
+
   function handleFilterChange(freq: string) {
     setFrequencyFilter(freq);
     loadData(weekNumber, currentYear, freq);
@@ -200,76 +231,257 @@ export default function WeeklyMaintenancePage() {
     setCalendarPlans([]);
     alert("Planul selectat a fost șters cu succes.");
   }
+  // ====================================================
+  // MOD 1: AUTOMATIC PLANNING USING RRAS
+  // ====================================================
+  async function autoGeneratePlan() {
+    setLoading(true);
 
-  async function savePlan() {
+    try {
+      // Ștergerea planului existent pentru săptămâna selectată
+      const { error: deleteError } = await supabase
+        .from("weekly_maintenance_plans")
+        .delete()
+        .eq("week_number", weekNumber)
+        .eq("year", currentYear);
+
+      if (deleteError) {
+        throw new Error(`[Ștergere] ${deleteError.message}`);
+      }
+
+      // Calculare interval ISO week
+      const { weekStart, weekEnd } = getWeekDateRange(weekNumber, currentYear);
+
+      // Preluare sarcini PM active în interval
+      const { data: pmTasks, error: fetchError } = await supabase
+        .from("pm_tasks")
+        .select("*")
+        .gte("next_due_at", `${weekStart}T00:00:00.000Z`)
+        .lte("next_due_at", `${weekEnd}T23:59:59.999Z`);
+
+      if (fetchError) {
+        throw new Error(`[Preluare PMs] ${fetchError.message}`);
+      }
+
+      if (!pmTasks || pmTasks.length === 0) {
+        alert(
+          `Nu s-au găsit sarcini PM scadente pentru intervalul ${weekStart} - ${weekEnd}.`,
+        );
+        setLoading(false);
+        return;
+      }
+
+      const typedTasks = pmTasks as PMTask[];
+      const groups: {
+        [key: string]: {
+          equipment: string;
+          count: number;
+          totalMinutes: number;
+        };
+      } = {};
+
+      typedTasks.forEach((task) => {
+        if (!groups[task.tool_number]) {
+          groups[task.tool_number] = {
+            equipment: task.equipment || "Unknown",
+            count: 0,
+            totalMinutes: 0,
+          };
+        }
+        groups[task.tool_number].count += 1;
+        groups[task.tool_number].totalMinutes += task.estimated_time || 0;
+      });
+
+      const sortedToolNumbers = Object.keys(groups).sort((a, b) =>
+        a.localeCompare(b),
+      );
+
+      const records = sortedToolNumbers.map((toolNum, index) => {
+        const group = groups[toolNum];
+        const plannedDay = DAYS_OF_WEEK[index % DAYS_OF_WEEK.length]; // RRAS
+
+        return {
+          tool_id: null,
+          pm_task_id: null,
+          week_number: weekNumber,
+          year: currentYear,
+          planned_day: plannedDay,
+          tool_number: toolNum,
+          machine_name: group.equipment,
+          action: `Auto Generated PM Plan (${group.count} tasks)`,
+          duration_minutes: group.totalMinutes,
+          status: "PENDING",
+          production_status: "PENDING",
+        };
+      });
+
+      const { error: insertError } = await supabase
+        .from("weekly_maintenance_plans")
+        .insert(records);
+
+      if (insertError) {
+        throw new Error(`[Inserare Plan Auto] ${insertError.message}`);
+      }
+
+      await loadCurrentCalendar(weekNumber, currentYear);
+      alert("Weekly plan generated automatically.");
+    } catch (error: any) {
+      console.error(error);
+      alert(`Generare automată eșuată: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ====================================================
+  // MOD 2: MANUAL PLANNING USING MACHINE SELECTION
+  // ====================================================
+  async function manualGeneratePlan() {
+    // 1. Filtrare mașini selectate manual prin bife
     const selected = machines.filter((m) => m.selected);
     const alreadyPlannedTools = calendarPlans.map((p) => p.tool_number);
+
+    // Ignorăm mașinile care sunt deja incluse în calendarul salvat
     const validSelected = selected.filter(
       (m) => !alreadyPlannedTools.includes(m.tool_number),
     );
 
     if (validSelected.length === 0) {
-      alert("Selectează cel puțin un utilaj nou care nu este deja planificat.");
+      alert(
+        "Selectează cel puțin un utilaj nou din tabel folosind checkbox-ul.",
+      );
       return;
     }
 
     setLoading(true);
-    const records = validSelected.map((m) => ({
-      tool_id: null,
-      pm_task_id: null,
-      week_number: weekNumber,
-      year: currentYear,
-      planned_day: m.planned_day,
-      tool_number: m.tool_number,
-      machine_name: m.equipment,
-      action: `Weekly Shutdown Maintenance (${m.number_of_tasks} tasks)`,
-      duration_minutes: m.duration_minutes,
-      status: "PENDING",
-      production_status: "PENDING",
-    }));
 
-    const { error: insertError } = await supabase
-      .from("weekly_maintenance_plans")
-      .insert(records);
+    try {
+      // 2. Mapare înregistrări păstrând valorile editate manual în UI (planned_day și duration_minutes)
+      const records = validSelected.map((m) => ({
+        tool_id: null,
+        pm_task_id: null,
+        week_number: weekNumber,
+        year: currentYear,
+        planned_day: m.planned_day, // User-selected day
+        tool_number: m.tool_number,
+        machine_name: m.equipment,
+        action: `Manual PM Plan (${m.number_of_tasks} tasks)`,
+        duration_minutes: m.duration_minutes, // User-modified duration
+        status: "PENDING",
+        production_status: "PENDING",
+      }));
 
-    if (insertError) {
+      const { error: insertError } = await supabase
+        .from("weekly_maintenance_plans")
+        .insert(records);
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      alert("Selected machines added to the weekly plan.");
+
+      // Reîncărcare calendar și resetare bife
+      await loadCurrentCalendar(weekNumber, currentYear);
+      setMachines((prev) =>
+        prev.map((m) => (m.selected ? { ...m, selected: false } : m)),
+      );
+    } catch (error: any) {
+      console.error(error);
+      alert(`Salvarea manuală a eșuat: ${error.message}`);
+    } finally {
       setLoading(false);
-      alert(insertError.message);
-      return;
     }
+  }
 
-    alert("Utilajele selectate au fost adăugate în plan!");
-    await loadCurrentCalendar(weekNumber, currentYear);
-    setMachines((prev) =>
-      prev.map((m) => (m.selected ? { ...m, selected: false } : m)),
-    );
-    setLoading(false);
+  function getDateFromPlannedDay(
+    weekNum: number,
+    yr: number,
+    plannedDay: string,
+  ): string {
+    // Găsim data de 4 Ianuarie (ancora standardului ISO)
+    const fourthOfJanuary = new Date(yr, 0, 4);
+    const dayOfWeek = fourthOfJanuary.getDay();
+
+    // Calculăm prima zi de Luni din prima săptămână ISO
+    const isoWeek1Monday = new Date(fourthOfJanuary);
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    isoWeek1Monday.setDate(fourthOfJanuary.getDate() - daysToSubtract);
+
+    // Avansăm la săptămâna curentă
+    const targetMonday = new Date(isoWeek1Monday);
+    targetMonday.setDate(isoWeek1Monday.getDate() + (weekNum - 1) * 7);
+
+    // Mapăm indexul zilei din săptămână
+    const dayOffsets: { [key: string]: number } = {
+      MONDAY: 0,
+      TUESDAY: 1,
+      WEDNESDAY: 2,
+      THURSDAY: 3,
+      FRIDAY: 4,
+      SATURDAY: 5,
+      SUNDAY: 6,
+    };
+
+    const offset = dayOffsets[plannedDay.toUpperCase()] ?? 0;
+    const actualDate = new Date(targetMonday);
+    actualDate.setDate(targetMonday.getDate() + offset);
+
+    // Formatare în stilul DD-MMM-YYYY cu luni textuale scurte în limba engleză
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    const dayStr = String(actualDate.getDate()).padStart(2, "0");
+    const monthStr = months[actualDate.getMonth()];
+    const yearStr = actualDate.getFullYear();
+
+    return `${dayStr}-${monthStr}-${yearStr}`;
   }
 
   function exportPDF() {
     const doc = new jsPDF();
 
-    // Titlu principal stilizat premium
+    // ----------------------------------------------------
+    // PDF HEADER (Cerere Oficială Producție)
+    // ----------------------------------------------------
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
+    doc.setFontSize(20);
     doc.setTextColor(15, 23, 42); // Slate 900
-    doc.text("WEEKLY PREVENTIVE MAINTENANCE PLAN", 14, 20);
+    doc.text("WEEKLY PREVENTIVE MAINTENANCE REQUEST", 14, 20);
 
-    // Subtitlu cu detalii de timp
-    doc.setFont("helvetica", "medium");
-    doc.setFontSize(11);
+    // Subtitlu: Săptămână / An
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(71, 85, 105); // Slate 600
+    doc.text(`Week ${weekNumber} / ${currentYear}`, 14, 27);
+
+    // Linia a doua: Solicitare de revizuire pentru producție
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
     doc.setTextColor(100, 116, 139); // Slate 500
     doc.text(
-      `Generated Schedule for Week ${weekNumber} / ${currentYear}`,
+      "Please review the proposed downtime windows and confirm machine availability.",
       14,
-      28,
+      33,
     );
 
-    // Linie subtilă de separare pentru header
+    // Linie estetică de demarcare sub Header
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.5);
-    doc.line(14, 32, 196, 32);
+    doc.line(14, 37, 196, 37);
 
+    // Sortarea planului pe zile conform fluxului săptămânal
     const sortedPlans = [...calendarPlans].sort((a, b) => {
       return (
         DAYS_OF_WEEK.indexOf(a.planned_day) -
@@ -277,101 +489,177 @@ export default function WeeklyMaintenancePage() {
       );
     });
 
-    const pdfMapping: { [key: string]: string } = {
-      "1Z": "Daily",
-      "1S": "Weekly",
-      "1L": "Monthly",
-      "6L": "6 Months",
-      "12L": "12 Months",
-      "1A": "1 Year",
-      "2A": "2 Years",
-      "3A": "3 Years",
-      "5A": "5 Years",
-      AM: "As Needed",
-    };
-
+    // ----------------------------------------------------
+    // CONSTRUIRE CORP TABEL (Exclusiv Date Producție)
+    // ----------------------------------------------------
     const body = sortedPlans.map((p) => {
-      const matchingMachine = machines.find(
-        (m) => m.tool_number === p.tool_number,
+      // Conversia zilei text (ex: MONDAY) în dată calendaristică reală
+      const calendarDate = getDateFromPlannedDay(
+        weekNumber,
+        currentYear,
+        p.planned_day,
       );
-      const rawFreqs = matchingMachine
-        ? matchingMachine.frequency.split(", ")
-        : [];
-      const cleanFreqs = rawFreqs.map((f) => pdfMapping[f] || f).join(", ");
+
+      // Gestiune coloană Schimb (Shift) cu Fallback pe 'SHIFT 1'
+      const activeShift = (p as any).shift || "SHIFT 1";
 
       return [
-        p.planned_day.charAt(0) + p.planned_day.slice(1).toLowerCase(),
+        calendarDate,
+        activeShift,
         p.tool_number,
         p.machine_name || "N/A",
-        cleanFreqs || "N/A",
         `${p.duration_minutes} min`,
-        p.status,
+        "  [  ] OK   [  ] REJ", // Spațiu curat pentru bifare fizică pe foaie
       ];
     });
 
+    // Generare tabel structurat
     autoTable(doc, {
-      startY: 38,
+      startY: 43,
       head: [
         [
-          "Planned Day",
+          "Date",
+          "Shift",
           "Machine ID",
-          "Equipment Name",
-          "Frequency",
-          "Duration",
-          "Status",
+          "Equipment",
+          "Duration (min)",
+          "Production Confirmation",
         ],
       ],
       body: body,
       headStyles: {
-        fillColor: "#0F172A",
+        fillColor: "#0F172A", // Slate 900 pentru un aspect industrial premium
         textColor: "#FFFFFF",
         fontStyle: "bold",
         fontSize: 10,
       },
       bodyStyles: { fontSize: 9, textColor: "#334155" },
       alternateRowStyles: { fillColor: "#F8FAFC" },
-      margin: { top: 35, left: 14, right: 14 },
+      columnStyles: {
+        5: { fontStyle: "bold", textColor: "#64748B" }, // Evidențiere vizuală zonă confirmare
+      },
+      margin: { top: 40, left: 14, right: 14 },
       theme: "striped",
     });
 
+    // ----------------------------------------------------
+    // SUMMARY PANEL & FOOTER SECTION
+    // ----------------------------------------------------
     const totalMachines = sortedPlans.length;
     const totalDowntime = sortedPlans.reduce(
       (sum, p) => sum + p.duration_minutes,
       0,
     );
-    const finalY = (doc as any).lastAutoTable.finalY + 15;
 
-    // Panou sumator elegant la finalul tabelului
+    // Determinăm coordonata Y curentă după tabel pentru a evita suprapunerile
+    let currentY = (doc as any).lastAutoTable.finalY + 12;
+
+    // Panou Sumar compact
     doc.setFillColor(248, 250, 252);
-    doc.rect(14, finalY, 182, 20, "F");
+    doc.rect(14, currentY, 182, 16, "F");
     doc.setDrawColor(226, 232, 240);
-    doc.rect(14, finalY, 182, 20, "S");
+    doc.rect(14, currentY, 182, 16, "S");
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
-    doc.text(`Total Planned Machines: ${totalMachines}`, 20, finalY + 12);
+    doc.text(`Total Planned Machines: ${totalMachines}`, 20, currentY + 10);
     doc.text(
-      `Total Allocated Downtime: ${totalDowntime} min`,
+      `Total Planned Downtime: ${totalDowntime} min`,
       110,
-      finalY + 12,
+      currentY + 10,
     );
 
-    doc.save(`Weekly_Maintenance_Plan_W${weekNumber}_${currentYear}.pdf`);
+    currentY += 26;
+
+    // Secțiunea: Production Comments
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Production Comments", 14, currentY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184); // Culoare linie fină (Slate 400)
+    doc.text(
+      "_________________________________________________________________________________",
+      14,
+      currentY + 8,
+    );
+    doc.text(
+      "_________________________________________________________________________________",
+      14,
+      currentY + 18,
+    );
+    doc.text(
+      "_________________________________________________________________________________",
+      14,
+      currentY + 28,
+    );
+
+    currentY += 44;
+
+    // Linii semnatari și asumare răspundere Producție
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(51, 65, 85); // Slate 700
+    doc.text("Confirmed by: __________________________", 14, currentY);
+    doc.text("Date: _________________________________", 115, currentY);
+
+    // Salvare document cu nume contextual curat
+    doc.save(`Production_Downtime_Request_W${weekNumber}_${currentYear}.pdf`);
   }
-  function renderFrequencyBadge(freqString: string) {
-    const freqs = freqString.split(", ");
+
+  function renderFrequencyBadge(freqString: string, currentFilter: string) {
+    if (currentFilter === "WEEKLY") {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border tracking-wide whitespace-nowrap bg-blue-50 text-blue-700 border-blue-200">
+            Weekly
+          </span>
+        </div>
+      );
+    }
+
+    if (currentFilter === "MONTHLY") {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border tracking-wide whitespace-nowrap bg-amber-50 text-amber-700 border-amber-200">
+            Monthly
+          </span>
+        </div>
+      );
+    }
+
+    if (currentFilter === "YEARLY") {
+      return (
+        <div className="flex flex-wrap gap-1">
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border tracking-wide whitespace-nowrap bg-purple-50 text-purple-700 border-purple-200">
+            Yearly
+          </span>
+        </div>
+      );
+    }
+
+    const freqs = freqString ? freqString.split(", ") : [];
+
+    if (freqs.length === 0) {
+      return (
+        <span className="text-[11px] font-medium text-slate-400 italic">
+          N/A
+        </span>
+      );
+    }
+
     const mapping: { [key: string]: { label: string; style: string } } = {
-      "1Z": {
-        label: "Daily",
-        style: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      },
       "1S": {
         label: "Weekly",
         style: "bg-blue-50 text-blue-700 border-blue-200",
       },
       "1L": {
         label: "Monthly",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "3L": {
+        label: "3 Months",
         style: "bg-amber-50 text-amber-700 border-amber-200",
       },
       "6L": {
@@ -397,10 +685,6 @@ export default function WeeklyMaintenancePage() {
       "5A": {
         label: "5 Years",
         style: "bg-purple-50 text-purple-700 border-purple-200",
-      },
-      AM: {
-        label: "As Needed",
-        style: "bg-slate-100 text-slate-600 border-slate-200",
       },
     };
 
@@ -478,28 +762,39 @@ export default function WeeklyMaintenancePage() {
             </div>
           </div>
         </div>
-        <div className="flex gap-3">
+
+        <div className="flex flex-wrap gap-3">
+          {/* Buton Mod Automat */}
           <button
-            onClick={savePlan}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
+            onClick={autoGeneratePlan}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm transition-colors text-sm flex items-center gap-1.5"
           >
-            Generate Weekly Plan
+            <span>🤖</span> Auto Generate Plan
           </button>
+
+          {/* Buton Mod Manual */}
+          <button
+            onClick={manualGeneratePlan}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm transition-colors text-sm flex items-center gap-1.5"
+          >
+            <span>✍️</span> Manual Generate Plan
+          </button>
+
           <button
             onClick={exportPDF}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
           >
             Export PDF
           </button>
+
           <button
             onClick={clearPlan}
-            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
+            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
           >
             Clear Plan
           </button>
         </div>
       </div>
-
       {loading ? (
         <div className="flex justify-center py-12">
           <p className="text-slate-500 font-medium animate-pulse">
@@ -587,7 +882,10 @@ export default function WeeklyMaintenancePage() {
                             {machine.number_of_tasks}
                           </td>
                           <td className="py-3.5 px-4">
-                            {renderFrequencyBadge(machine.frequency)}
+                            {renderFrequencyBadge(
+                              machine.frequency,
+                              frequencyFilter,
+                            )}
                           </td>
                           <td className="py-3.5 px-4">
                             <input
