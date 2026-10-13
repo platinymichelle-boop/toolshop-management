@@ -12,6 +12,7 @@ interface PMTask {
   action: string;
   next_due_at: string;
   estimated_minutes: number | null;
+  frequency: string;
 }
 
 interface GroupedMachine {
@@ -21,6 +22,7 @@ interface GroupedMachine {
   duration_minutes: number;
   planned_day: string;
   selected: boolean;
+  frequency: string;
 }
 
 interface MaintenancePlan {
@@ -35,6 +37,7 @@ interface MaintenancePlan {
 }
 
 const DAYS_OF_WEEK = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+const FREQUENCY_OPTIONS = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
 
 export default function WeeklyMaintenancePage() {
   const [machines, setMachines] = useState<GroupedMachine[]>([]);
@@ -42,6 +45,7 @@ export default function WeeklyMaintenancePage() {
   const [loading, setLoading] = useState(false);
   const [weekNumber, setWeekNumber] = useState(0);
   const [currentYear, setCurrentYear] = useState(0);
+  const [frequencyFilter, setFrequencyFilter] = useState("ALL");
 
   useEffect(() => {
     const now = new Date();
@@ -49,7 +53,7 @@ export default function WeeklyMaintenancePage() {
     const y = now.getFullYear();
     setWeekNumber(w);
     setCurrentYear(y);
-    loadData(w, y);
+    loadData(w, y, frequencyFilter);
   }, []);
 
   function getWeekNumber(date: Date) {
@@ -63,18 +67,29 @@ export default function WeeklyMaintenancePage() {
     }
     return 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
   }
-
-  async function loadData(w: number, y: number) {
+  async function loadData(w: number, y: number, freq: string) {
     setLoading(true);
-    await Promise.all([loadAvailableTasks(), loadCurrentCalendar(w, y)]);
+    await Promise.all([loadAvailableTasks(freq), loadCurrentCalendar(w, y)]);
     setLoading(false);
   }
 
-  async function loadAvailableTasks() {
-    const { data, error } = await supabase
+  async function loadAvailableTasks(freq: string) {
+    let query = supabase
       .from("pm_tasks")
       .select("*")
       .lte("next_due_at", new Date().toISOString());
+
+    if (freq === "DAILY") {
+      query = query.eq("frequency", "1Z");
+    } else if (freq === "WEEKLY") {
+      query = query.eq("frequency", "1S");
+    } else if (freq === "MONTHLY") {
+      query = query.in("frequency", ["1L", "6L", "12L"]);
+    } else if (freq === "YEARLY") {
+      query = query.in("frequency", ["1A", "2A", "3A", "5A"]);
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       const typedData = data as PMTask[];
@@ -83,6 +98,7 @@ export default function WeeklyMaintenancePage() {
           equipment: string;
           count: number;
           totalMinutes: number;
+          frequencies: Set<string>;
         };
       } = {};
 
@@ -92,27 +108,39 @@ export default function WeeklyMaintenancePage() {
             equipment: task.equipment || "Unknown",
             count: 0,
             totalMinutes: 0,
+            frequencies: new Set<string>(),
           };
         }
         groups[task.tool_number].count += 1;
         groups[task.tool_number].totalMinutes += task.estimated_minutes || 0;
+        if (task.frequency) {
+          groups[task.tool_number].frequencies.add(task.frequency);
+        }
       });
 
       const groupedArr: GroupedMachine[] = Object.keys(groups).map(
-        (toolNum) => ({
-          tool_number: toolNum,
-          equipment: groups[toolNum].equipment,
-          number_of_tasks: groups[toolNum].count,
-          duration_minutes: groups[toolNum].totalMinutes,
-          planned_day: "MONDAY",
-          selected: false,
-        }),
+        (toolNum) => {
+          const freqArr = Array.from(groups[toolNum].frequencies);
+          const displayFrequency =
+            freqArr.length > 0 ? freqArr.join(", ") : "N/A";
+
+          return {
+            tool_number: toolNum,
+            equipment: groups[toolNum].equipment,
+            number_of_tasks: groups[toolNum].count,
+            duration_minutes: groups[toolNum].totalMinutes,
+            planned_day: "MONDAY",
+            selected: false,
+            frequency: displayFrequency,
+          };
+        },
       );
 
       groupedArr.sort((a, b) => a.tool_number.localeCompare(b.tool_number));
       setMachines(groupedArr);
     }
   }
+
   async function loadCurrentCalendar(w: number, y: number) {
     const { data, error } = await supabase
       .from("weekly_maintenance_plans")
@@ -123,6 +151,10 @@ export default function WeeklyMaintenancePage() {
     if (!error && data) {
       setCalendarPlans(data as MaintenancePlan[]);
     }
+  }
+  function handleFilterChange(freq: string) {
+    setFrequencyFilter(freq);
+    loadData(weekNumber, currentYear, freq);
   }
 
   function handleCheckboxChange(index: number, checked: boolean) {
@@ -160,7 +192,6 @@ export default function WeeklyMaintenancePage() {
       .eq("year", currentYear);
 
     setLoading(false);
-
     if (error) {
       alert(error.message);
       return;
@@ -172,7 +203,6 @@ export default function WeeklyMaintenancePage() {
 
   async function savePlan() {
     const selected = machines.filter((m) => m.selected);
-
     const alreadyPlannedTools = calendarPlans.map((p) => p.tool_number);
     const validSelected = selected.filter(
       (m) => !alreadyPlannedTools.includes(m.tool_number),
@@ -184,7 +214,6 @@ export default function WeeklyMaintenancePage() {
     }
 
     setLoading(true);
-
     const records = validSelected.map((m) => ({
       tool_id: null,
       pm_task_id: null,
@@ -211,7 +240,6 @@ export default function WeeklyMaintenancePage() {
 
     alert("Utilajele selectate au fost adăugate în plan!");
     await loadCurrentCalendar(weekNumber, currentYear);
-
     setMachines((prev) =>
       prev.map((m) => (m.selected ? { ...m, selected: false } : m)),
     );
@@ -221,15 +249,26 @@ export default function WeeklyMaintenancePage() {
   function exportPDF() {
     const doc = new jsPDF();
 
+    // Titlu principal stilizat premium
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.setTextColor(26, 54, 93);
-    doc.text("WEEKLY MAINTENANCE SHUTDOWN PLAN", 14, 22);
+    doc.setFontSize(22);
+    doc.setTextColor(15, 23, 42); // Slate 900
+    doc.text("WEEKLY PREVENTIVE MAINTENANCE PLAN", 14, 20);
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.setTextColor(74, 85, 104);
-    doc.text(`Week ${weekNumber} - ${currentYear}`, 14, 30);
+    // Subtitlu cu detalii de timp
+    doc.setFont("helvetica", "medium");
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139); // Slate 500
+    doc.text(
+      `Generated Schedule for Week ${weekNumber} / ${currentYear}`,
+      14,
+      28,
+    );
+
+    // Linie subtilă de separare pentru header
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(14, 32, 196, 32);
 
     const sortedPlans = [...calendarPlans].sort((a, b) => {
       return (
@@ -238,25 +277,61 @@ export default function WeeklyMaintenancePage() {
       );
     });
 
-    const body = sortedPlans.map((p) => [
-      p.planned_day,
-      p.tool_number,
-      p.machine_name || "",
-      p.duration_minutes,
-      p.status,
-    ]);
+    const pdfMapping: { [key: string]: string } = {
+      "1Z": "Daily",
+      "1S": "Weekly",
+      "1L": "Monthly",
+      "6L": "6 Months",
+      "12L": "12 Months",
+      "1A": "1 Year",
+      "2A": "2 Years",
+      "3A": "3 Years",
+      "5A": "5 Years",
+      AM: "As Needed",
+    };
+
+    const body = sortedPlans.map((p) => {
+      const matchingMachine = machines.find(
+        (m) => m.tool_number === p.tool_number,
+      );
+      const rawFreqs = matchingMachine
+        ? matchingMachine.frequency.split(", ")
+        : [];
+      const cleanFreqs = rawFreqs.map((f) => pdfMapping[f] || f).join(", ");
+
+      return [
+        p.planned_day.charAt(0) + p.planned_day.slice(1).toLowerCase(),
+        p.tool_number,
+        p.machine_name || "N/A",
+        cleanFreqs || "N/A",
+        `${p.duration_minutes} min`,
+        p.status,
+      ];
+    });
 
     autoTable(doc, {
       startY: 38,
-      head: [["Day", "Machine", "Equipment", "Duration (min)", "Status"]],
+      head: [
+        [
+          "Planned Day",
+          "Machine ID",
+          "Equipment Name",
+          "Frequency",
+          "Duration",
+          "Status",
+        ],
+      ],
       body: body,
       headStyles: {
-        fillColor: "#1A365D",
+        fillColor: "#0F172A",
         textColor: "#FFFFFF",
         fontStyle: "bold",
+        fontSize: 10,
       },
-      alternateRowStyles: { fillColor: "#F7FAFC" },
-      margin: { top: 35 },
+      bodyStyles: { fontSize: 9, textColor: "#334155" },
+      alternateRowStyles: { fillColor: "#F8FAFC" },
+      margin: { top: 35, left: 14, right: 14 },
+      theme: "striped",
     });
 
     const totalMachines = sortedPlans.length;
@@ -264,50 +339,142 @@ export default function WeeklyMaintenancePage() {
       (sum, p) => sum + p.duration_minutes,
       0,
     );
+    const finalY = (doc as any).lastAutoTable.finalY + 15;
 
-    const finalY = (doc as any).lastAutoTable.finalY + 12;
+    // Panou sumator elegant la finalul tabelului
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, finalY, 182, 20, "F");
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(14, finalY, 182, 20, "S");
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(45, 55, 72);
-    doc.text(`Total Machines: ${totalMachines}`, 14, finalY);
-    doc.text(`Total Downtime (min): ${totalDowntime} min`, 14, finalY + 7);
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Total Planned Machines: ${totalMachines}`, 20, finalY + 12);
+    doc.text(
+      `Total Allocated Downtime: ${totalDowntime} min`,
+      110,
+      finalY + 12,
+    );
 
-    doc.save(`Weekly_Maintenance_Shutdown_Plan_W${weekNumber}.pdf`);
+    doc.save(`Weekly_Maintenance_Plan_W${weekNumber}_${currentYear}.pdf`);
   }
+  function renderFrequencyBadge(freqString: string) {
+    const freqs = freqString.split(", ");
+    const mapping: { [key: string]: { label: string; style: string } } = {
+      "1Z": {
+        label: "Daily",
+        style: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      },
+      "1S": {
+        label: "Weekly",
+        style: "bg-blue-50 text-blue-700 border-blue-200",
+      },
+      "1L": {
+        label: "Monthly",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "6L": {
+        label: "6 Months",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "12L": {
+        label: "12 Months",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "1A": {
+        label: "1 Year",
+        style: "bg-purple-50 text-purple-700 border-purple-200",
+      },
+      "2A": {
+        label: "2 Years",
+        style: "bg-purple-50 text-purple-700 border-purple-200",
+      },
+      "3A": {
+        label: "3 Years",
+        style: "bg-purple-50 text-purple-700 border-purple-200",
+      },
+      "5A": {
+        label: "5 Years",
+        style: "bg-purple-50 text-purple-700 border-purple-200",
+      },
+      AM: {
+        label: "As Needed",
+        style: "bg-slate-100 text-slate-600 border-slate-200",
+      },
+    };
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {freqs.map((f) => {
+          const config = mapping[f] || {
+            label: f,
+            style: "bg-slate-100 text-slate-800 border-slate-200",
+          };
+          return (
+            <span
+              key={f}
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border tracking-wide whitespace-nowrap ${config.style}`}
+            >
+              {config.label}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b pb-5">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            Weekly Maintenance Shutdown Planner
+            Weekly Preventive Maintenance Planner
           </h1>
-          <div className="flex items-center gap-4 mt-2">
-            <div className="flex items-center gap-1.5 text-sm text-slate-600">
-              <span>Week:</span>
-              <input
-                type="number"
-                value={weekNumber}
-                onChange={(e) => {
-                  const w = Number(e.target.value);
-                  setWeekNumber(w);
-                  loadData(w, currentYear);
-                }}
-                className="w-14 border rounded px-1.5 py-0.5 text-center font-bold bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
+          <div className="flex flex-wrap items-center gap-6 mt-3">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5 text-sm text-slate-600">
+                <span>Week:</span>
+                <input
+                  type="number"
+                  value={weekNumber}
+                  onChange={(e) => {
+                    const w = Number(e.target.value);
+                    setWeekNumber(w);
+                    loadData(w, currentYear, frequencyFilter);
+                  }}
+                  className="w-14 border rounded px-1.5 py-0.5 text-center font-bold bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-slate-600">
+                <span>Year:</span>
+                <input
+                  type="number"
+                  value={currentYear}
+                  onChange={(e) => {
+                    const y = Number(e.target.value);
+                    setCurrentYear(y);
+                    loadData(weekNumber, y, frequencyFilter);
+                  }}
+                  className="w-20 border rounded px-1.5 py-0.5 text-center font-bold bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-sm text-slate-600">
-              <span>Year:</span>
-              <input
-                type="number"
-                value={currentYear}
-                onChange={(e) => {
-                  const y = Number(e.target.value);
-                  setCurrentYear(y);
-                  loadData(weekNumber, y);
-                }}
-                className="w-20 border rounded px-1.5 py-0.5 text-center font-bold bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
+
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 shadow-sm">
+              {FREQUENCY_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => handleFilterChange(option)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                    frequencyFilter === option
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/50"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  {option.charAt(0) + option.slice(1).toLowerCase()}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -355,6 +522,7 @@ export default function WeeklyMaintenancePage() {
                     <th className="py-3 px-4">Tool Number</th>
                     <th className="py-3 px-4">Equipment</th>
                     <th className="py-3 px-4 text-center">Tasks Count</th>
+                    <th className="py-3 px-4">Frequency</th>
                     <th className="py-3 px-4 w-32">Duration (min)</th>
                     <th className="py-3 px-4 w-40">Planned Day</th>
                   </tr>
@@ -363,7 +531,7 @@ export default function WeeklyMaintenancePage() {
                   {machines.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="py-8 text-center text-slate-400"
                       >
                         No outstanding PM tasks found for this period.
@@ -417,6 +585,9 @@ export default function WeeklyMaintenancePage() {
                           </td>
                           <td className="py-3.5 px-4 text-center font-semibold">
                             {machine.number_of_tasks}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {renderFrequencyBadge(machine.frequency)}
                           </td>
                           <td className="py-3.5 px-4">
                             <input
