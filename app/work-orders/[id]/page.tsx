@@ -41,7 +41,6 @@ interface WorkOrderAction {
   control_method?: string | null;
   technician?: string | null;
   estimated_time?: string | null;
-  estimated_minutes?: number | string | null;
   part_reference?: string | null;
   required_material?: string | null;
   remarks?: string | null;
@@ -111,7 +110,7 @@ export default function WorkOrderDetailsPage() {
           .select(
             `
             id, workcenter, equipment, sub_equipment, maintenance_equipment, operation, 
-            control_method, technician, estimated_time, estimated_minutes, part_reference, 
+            control_method, technician, estimated_time , part_reference, 
             required_material, remarks, priority
           `,
           )
@@ -140,7 +139,6 @@ export default function WorkOrderDetailsPage() {
           control_method: matchingPmTask.control_method || null,
           technician: matchingPmTask.technician || null,
           estimated_time: matchingPmTask.estimated_time || null,
-          estimated_minutes: matchingPmTask.estimated_minutes || null,
           part_reference: matchingPmTask.part_reference || null,
           required_material: matchingPmTask.required_material || null,
           remarks: matchingPmTask.remarks || null,

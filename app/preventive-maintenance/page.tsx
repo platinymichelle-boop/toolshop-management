@@ -54,7 +54,6 @@ interface PMTask {
   remarks: string | null;
   part_reference: string | null;
   required_material: string | null;
-  estimated_minutes: number | null;
 }
 
 interface WorkOrder {
