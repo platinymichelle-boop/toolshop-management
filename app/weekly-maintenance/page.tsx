@@ -230,33 +230,50 @@ export default function WeeklyMaintenancePage() {
     setMachines(updated);
   }
 
-  // NOU: Generare Token Aleatoriu Securizat și actualizare planuri
+  // REPARAT: Logica de reutilizare sau generare unică a token-ului de aprobare securizat
   async function sendToProduction() {
     if (calendarPlans.length === 0) {
       alert("Nu există utilaje planificate pentru această săptămână.");
       return;
     }
 
-    const randomToken =
-      "tok_" +
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    // Cerința 6: Verifică dacă există deja un token salvat pentru această săptămână
+    const existingPlanWithToken = calendarPlans.find(
+      (p) => p.approval_token && p.approval_token.trim() !== "",
+    );
+    let token = existingPlanWithToken
+      ? existingPlanWithToken.approval_token
+      : null;
 
-    const { error } = await supabase
-      .from("weekly_maintenance_plans")
-      .update({ approval_token: randomToken })
-      .eq("week_number", weekNumber)
-      .eq("year", currentYear);
+    if (!token) {
+      // Cerința 1: Generează un token unic aleatoriu dacă nu există deja unul creat
+      token =
+        "tok_" +
+        Math.random().toString(36).substring(2, 15) +
+        Math.random().toString(36).substring(2, 15);
 
-    if (!error) {
-      const url = `https://vercel.app{randomToken}`;
-      setShareUrl(url);
-      setShowShareModal(true);
-      await loadCurrentCalendar(weekNumber, currentYear);
-    } else {
-      alert(`Eroare la securizarea link-ului: ${error.message}`);
+      // Cerința 2: Salvează token-ul nou în weekly_maintenance_plans pentru toate înregistrările corespunzătoare
+      const { error } = await supabase
+        .from("weekly_maintenance_plans")
+        .update({ approval_token: token })
+        .eq("week_number", weekNumber)
+        .eq("year", currentYear);
+
+      if (error) {
+        alert(`Eroare la securizarea link-ului: ${error.message}`);
+        return;
+      }
     }
+
+    // Cerința 3: Construiește URL-ul real pe baza variabilei de mediu de producție
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const finalUrl = `${baseUrl}/approval/${token}`;
+
+    setShareUrl(finalUrl);
+    setShowShareModal(true);
+    await loadCurrentCalendar(weekNumber, currentYear);
   }
+
   async function clearPlan() {
     if (
       !confirm(
@@ -869,9 +886,9 @@ export default function WeeklyMaintenancePage() {
         </div>
       )}
 
-      {/* MODAL NOU: Partajare Link Public Securizat cu Token */}
+      {/* CORECTAT: Afișare URL real generat în loc de placeholder static în modal */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center p-4 z-50 animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 flex justify-center items-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
             <div className="text-center mb-4">
               <span className="text-3xl">🔒</span>
@@ -882,6 +899,7 @@ export default function WeeklyMaintenancePage() {
                 Producția va accesa doar tabelul izolat, fără meniuri interne.
               </p>
             </div>
+            {/* Cerința 4: Afișarea URL-ului real generat dinamic în input-ul modalului */}
             <input
               type="text"
               readOnly
@@ -889,6 +907,7 @@ export default function WeeklyMaintenancePage() {
               className="w-full border p-2.5 rounded-lg text-xs bg-slate-50 font-mono mb-4 text-blue-600 select-all font-bold text-center"
             />
             <div className="flex gap-2">
+              {/* Cerința 5: Butonul Copiază URL preia și transferă link-ul real în clipboard */}
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(shareUrl);
