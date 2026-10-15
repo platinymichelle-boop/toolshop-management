@@ -48,14 +48,15 @@ interface MaintenancePlan {
   week_number: number;
   year: number;
   shift?: string;
-  production_status: "PENDING" | "APPROVED" | "REJECTED"; // Nou
+  production_status: "PENDING" | "APPROVED" | "REJECTED";
   production_comment?: string | null;
+  approval_token?: string | null;
 }
 
 const DAYS_OF_WEEK = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 const FREQUENCY_OPTIONS = ["ALL", "WEEKLY", "MONTHLY", "YEARLY"];
 const SHIFT_OPTIONS = ["SHIFT 1", "SHIFT 2", "SHIFT 3"];
-const APPROVAL_FILTERS = ["ALL", "PENDING", "APPROVED", "REJECTED"]; // Nou
+const APPROVAL_FILTERS = ["ALL", "PENDING", "APPROVED", "REJECTED"];
 export default function WeeklyMaintenancePage() {
   const [machines, setMachines] = useState<GroupedMachine[]>([]);
   const [calendarPlans, setCalendarPlans] = useState<MaintenancePlan[]>([]);
@@ -63,10 +64,10 @@ export default function WeeklyMaintenancePage() {
   const [weekNumber, setWeekNumber] = useState(0);
   const [currentYear, setCurrentYear] = useState(0);
   const [frequencyFilter, setFrequencyFilter] = useState("ALL");
-  const [approvalFilter, setApprovalFilter] = useState("ALL"); // Nou
+  const [approvalFilter, setApprovalFilter] = useState("ALL");
   const [globalAutoShift, setGlobalAutoShift] = useState("SHIFT 1");
-  const [showShareModal, setShowShareModal] = useState(false); // Nou
-  const [shareUrl, setShareUrl] = useState(""); // Nou
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -229,13 +230,32 @@ export default function WeeklyMaintenancePage() {
     setMachines(updated);
   }
 
-  function sendToProduction() {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+  // NOU: Generare Token Aleatoriu Securizat și actualizare planuri
+  async function sendToProduction() {
+    if (calendarPlans.length === 0) {
+      alert("Nu există utilaje planificate pentru această săptămână.");
+      return;
+    }
 
-    const url = `${appUrl}/weekly-maintenance/approval/${weekNumber}/${currentYear}`;
+    const randomToken =
+      "tok_" +
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15);
 
-    setShareUrl(url);
-    setShowShareModal(true);
+    const { error } = await supabase
+      .from("weekly_maintenance_plans")
+      .update({ approval_token: randomToken })
+      .eq("week_number", weekNumber)
+      .eq("year", currentYear);
+
+    if (!error) {
+      const url = `https://vercel.app{randomToken}`;
+      setShareUrl(url);
+      setShowShareModal(true);
+      await loadCurrentCalendar(weekNumber, currentYear);
+    } else {
+      alert(`Eroare la securizarea link-ului: ${error.message}`);
+    }
   }
   async function clearPlan() {
     if (
@@ -274,6 +294,7 @@ export default function WeeklyMaintenancePage() {
 
       if (!pmTasks || pmTasks.length === 0) {
         setLoading(false);
+        alert("Niciun PM scadent.");
         return;
       }
       const groups: {
@@ -522,7 +543,16 @@ export default function WeeklyMaintenancePage() {
     doc.save(`Production_Downtime_Request_W${weekNumber}_${currentYear}.pdf`);
   }
 
+  // REPARAT: Logica de indexare TypeScript corectă utilizând mapare pe vectorul de frecvențe
   function renderFrequencyBadge(freqString: string, currentFilter: string) {
+    const freqs = freqString ? freqString.split(", ") : [];
+    if (freqs.length === 0)
+      return (
+        <span className="text-[11px] font-medium text-slate-400 italic">
+          N/A
+        </span>
+      );
+
     const mapping: { [key: string]: { label: string; style: string } } = {
       "1S": {
         label: "Weekly",
@@ -532,15 +562,44 @@ export default function WeeklyMaintenancePage() {
         label: "Monthly",
         style: "bg-amber-50 text-amber-700 border-amber-200",
       },
+      "3L": {
+        label: "3 Months",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "6L": {
+        label: "6 Months",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "12L": {
+        label: "12 Months",
+        style: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      "1A": {
+        label: "1 Year",
+        style: "bg-purple-50 text-purple-700 border-purple-200",
+      },
     };
+
     return (
-      <span
-        className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${mapping[freqString?.split(", ")[0]]?.style || "bg-slate-100"}`}
-      >
-        {mapping[freqString?.split(", ")[0]]?.label || "N/A"}
-      </span>
+      <div className="flex flex-wrap gap-1">
+        {freqs.map((f) => {
+          const config = mapping[f] || {
+            label: f,
+            style: "bg-slate-100 text-slate-800 border-slate-200",
+          };
+          return (
+            <span
+              key={f}
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border tracking-wide whitespace-nowrap ${config.style}`}
+            >
+              {config.label}
+            </span>
+          );
+        })}
+      </div>
     );
   }
+
   return (
     <div className="p-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b pb-5">
@@ -589,10 +648,9 @@ export default function WeeklyMaintenancePage() {
               ))}
             </div>
 
-            {/* NOU: Filtru Stare Aprobare Producție */}
             <div className="inline-flex rounded-lg border bg-slate-100 p-0.5 shadow-sm">
               <span className="text-xs text-slate-400 self-center px-2">
-                Approval:
+                Approval View:
               </span>
               {APPROVAL_FILTERS.map((opt) => (
                 <button
@@ -637,7 +695,6 @@ export default function WeeklyMaintenancePage() {
           >
             Export PDF
           </button>
-          {/* NOU: Buton Trimitere Aprobare Producție */}
           <button
             onClick={sendToProduction}
             className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm text-sm"
@@ -686,7 +743,6 @@ export default function WeeklyMaintenancePage() {
                     (p) => p.tool_number === machine.tool_number,
                   );
 
-                  // Aplică filtru aprobare
                   if (
                     approvalFilter !== "ALL" &&
                     planData?.production_status !== approvalFilter
@@ -813,38 +869,40 @@ export default function WeeklyMaintenancePage() {
         </div>
       )}
 
-      {/* NOU: Modal generare și copiere Link Aprobare Producție */}
+      {/* MODAL NOU: Partajare Link Public Securizat cu Token */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center p-4 z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl border">
-            <h3 className="text-lg font-bold text-slate-900 mb-2">
-              Production Approval Link
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Copy this link and send it to the Production Department via email
-              or messaging channel.
-            </p>
+        <div className="fixed inset-0 bg-black/50 flex justify-center items-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
+            <div className="text-center mb-4">
+              <span className="text-3xl">🔒</span>
+              <h3 className="text-lg font-black text-slate-900 mt-2">
+                Link de Aprobare Securizat
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Producția va accesa doar tabelul izolat, fără meniuri interne.
+              </p>
+            </div>
             <input
               type="text"
               readOnly
               value={shareUrl}
-              className="w-full border p-2 rounded text-xs bg-slate-50 font-mono mb-4 text-slate-600"
+              className="w-full border p-2.5 rounded-lg text-xs bg-slate-50 font-mono mb-4 text-blue-600 select-all font-bold text-center"
             />
-            <div className="flex justify-end gap-2">
+            <div className="flex gap-2">
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(shareUrl);
-                  alert("Link copiat!");
+                  alert("Link public copiat!");
                 }}
-                className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 rounded-lg transition-colors"
               >
-                Copy Link
+                Copiază URL
               </button>
               <button
                 onClick={() => setShowShareModal(false)}
-                className="bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-lg transition-colors"
               >
-                Close
+                Închide
               </button>
             </div>
           </div>
@@ -867,7 +925,7 @@ function DroppableContainer({
   return (
     <div
       ref={setNodeRef}
-      className={`p-2.5 rounded-lg border min-h-[120px] ${isOver ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}
+      className={`p-2.5 rounded-xl border min-h-[120px] transition-colors ${isOver ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}
     >
       <h3 className="text-xs font-bold text-slate-400 tracking-wider uppercase mb-2">
         {label}
@@ -909,29 +967,30 @@ function DraggableCard({
       style={style}
       {...listeners}
       {...attributes}
-      className={`flex justify-between items-center text-sm bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded border transition-all select-none cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
+      className={`flex justify-between items-center text-sm bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg border transition-all select-none cursor-grab active:cursor-grabbing ${isDragging ? "opacity-30 scale-95 shadow-none" : "shadow-sm border-slate-200"}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDelete(id);
           }}
-          className="text-slate-400 hover:text-red-500 p-0.5"
+          className="text-slate-300 hover:text-red-500 transition-colors p-0.5"
         >
           ✕
         </button>
-        <span className="font-mono font-bold text-slate-800">{toolNumber}</span>
-        <span className="text-[9px] bg-slate-200 text-slate-600 px-1 rounded font-semibold">
+        <span className="font-mono font-black text-slate-800 tracking-tight">
+          {toolNumber}
+        </span>
+        <span className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded font-bold">
           {shift?.replace("SHIFT ", "S") || "S1"}
         </span>
-        {/* NOU: Iconiță stare aprobare direct pe card */}
-        <span title={`Status Producție: ${status || "PENDING"}`}>
+        <span title={`Status: ${status || "PENDING"}`} className="text-xs">
           {icons[status || "PENDING"]}
         </span>
       </div>
-      <span className="text-xs font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border shadow-sm">
-        {duration} min
+      <span className="text-[11px] font-bold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+        {duration}m
       </span>
     </div>
   );
