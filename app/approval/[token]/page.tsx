@@ -21,7 +21,8 @@ interface PageProps {
 }
 
 export default function PublicApprovalPage({ params }: PageProps) {
-  const { token } = use(params);
+  const unwrappedParams = use(params);
+  const token = unwrappedParams?.token;
 
   const [plans, setPlans] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
     if (!error && data && data.length > 0) {
       setPlans(data as PlanItem[]);
       setWeekInfo({ week: data[0].week_number, year: data[0].year });
+
       const initialComments: { [key: string]: string } = {};
       data.forEach((p: any) => {
         initialComments[p.id] = p.production_comment || "";
@@ -60,7 +62,6 @@ export default function PublicApprovalPage({ params }: PageProps) {
   async function updateStatus(id: string, status: "APPROVED" | "REJECTED") {
     const comment = comments[id] || "";
 
-    // Sincronizare optimistă în UI
     setPlans((prev) =>
       prev.map((p) =>
         p.id === id
@@ -78,7 +79,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
         approved_by: "Production Public Portal",
       })
       .eq("id", Number(id))
-      .eq("approval_token", token); // Validare suplimentară prin token
+      .eq("approval_token", token);
 
     if (error) {
       alert(`Eroare la salvare: ${error.message}`);
@@ -106,6 +107,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
       </div>
     );
   }
+
   if (plans.length === 0) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-slate-100 p-4">
@@ -122,10 +124,8 @@ export default function PublicApprovalPage({ params }: PageProps) {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 select-none">
-      {/* Layout Standalone Curat - Fără Sidebar, Fără Navigație Aplicație */}
       <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-sm border p-6 md:p-8">
         <div className="mb-8 border-b pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -155,7 +155,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
             <p className="text-xs text-emerald-600 font-bold uppercase tracking-wider">
-              Utilaje Aprobate
+              Aprobate
             </p>
             <p className="text-2xl font-black text-emerald-700 mt-1">
               {totals.approved}
@@ -163,14 +163,14 @@ export default function PublicApprovalPage({ params }: PageProps) {
           </div>
           <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
             <p className="text-xs text-red-600 font-bold uppercase tracking-wider">
-              Utilaje Respinse
+              Respinse
             </p>
             <p className="text-2xl font-black text-red-700 mt-1">
               {totals.rejected}
             </p>
           </div>
           <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
-            <p className="text-xs text-amber-600 font-bold uppercase tracking-wider font-sans">
+            <p className="text-xs text-amber-600 font-bold uppercase tracking-wider">
               În Așteptare
             </p>
             <p className="text-2xl font-black text-amber-700 mt-1">
@@ -179,7 +179,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
           </div>
           <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
             <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
-              Timp Total Oprire
+              Timp Oprire
             </p>
             <p className="text-2xl font-black text-slate-700 mt-1">
               {(totals.minutes / 60).toFixed(1)} ore

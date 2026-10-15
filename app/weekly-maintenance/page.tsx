@@ -9,7 +9,6 @@ import {
   useDroppable,
   useDraggable,
   DragEndEvent,
-  DragStartEvent,
   closestCenter,
   PointerSensor,
   useSensor,
@@ -109,12 +108,8 @@ export default function WeeklyMaintenancePage() {
     const targetSunday = new Date(targetMonday);
     targetSunday.setDate(targetMonday.getDate() + 6);
 
-    const formatDate = (date: Date) => {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, "0");
-      const d = String(date.getDate()).padStart(2, "0");
-      return `${y}-${m}-${d}`;
-    };
+    const formatDate = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
     return {
       weekStart: formatDate(targetMonday),
@@ -136,9 +131,8 @@ export default function WeeklyMaintenancePage() {
     else if (freq === "YEARLY")
       query = query.in("frequency", ["1A", "2A", "3A", "5A"]);
 
-    const { data, error } = await query;
-    if (!error && data) {
-      const typedData = data as PMTask[];
+    const { data } = await query;
+    if (data) {
       const groups: {
         [key: string]: {
           equipment: string;
@@ -147,8 +141,7 @@ export default function WeeklyMaintenancePage() {
           frequencies: Set<string>;
         };
       } = {};
-
-      typedData.forEach((task) => {
+      (data as PMTask[]).forEach((task) => {
         if (!groups[task.tool_number]) {
           groups[task.tool_number] = {
             equipment: task.equipment || "Unknown",
@@ -157,38 +150,37 @@ export default function WeeklyMaintenancePage() {
             frequencies: new Set<string>(),
           };
         }
-        groups[task.tool_number].count += 1;
+        groups[task.tool_number].count++;
         groups[task.tool_number].totalMinutes += task.estimated_time || 0;
         if (task.frequency)
           groups[task.tool_number].frequencies.add(task.frequency);
       });
 
-      const groupedArr: GroupedMachine[] = Object.keys(groups)
-        .sort()
-        .map((toolNum, idx) => ({
-          tool_number: toolNum,
-          equipment: groups[toolNum].equipment,
-          number_of_tasks: groups[toolNum].count,
-          duration_minutes: groups[toolNum].totalMinutes,
-          planned_day: DAYS_OF_WEEK[idx % DAYS_OF_WEEK.length],
-          selected: false,
-          frequency:
-            Array.from(groups[toolNum].frequencies).join(", ") || "N/A",
-          shift: "SHIFT 1",
-        }));
-      setMachines(groupedArr);
+      setMachines(
+        Object.keys(groups)
+          .sort()
+          .map((toolNum, idx) => ({
+            tool_number: toolNum,
+            equipment: groups[toolNum].equipment,
+            number_of_tasks: groups[toolNum].count,
+            duration_minutes: groups[toolNum].totalMinutes,
+            planned_day: DAYS_OF_WEEK[idx % DAYS_OF_WEEK.length],
+            selected: false,
+            frequency:
+              Array.from(groups[toolNum].frequencies).join(", ") || "N/A",
+            shift: "SHIFT 1",
+          })),
+      );
     }
   }
   async function loadCurrentCalendar(w: number, y: number) {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("weekly_maintenance_plans")
       .select("*")
       .eq("week_number", w)
       .eq("year", y);
 
-    if (!error && data) {
-      setCalendarPlans(data as MaintenancePlan[]);
-    }
+    if (data) setCalendarPlans(data as MaintenancePlan[]);
   }
 
   function handleFilterChange(freq: string) {
@@ -204,11 +196,11 @@ export default function WeeklyMaintenancePage() {
 
   function handleSelectAllChange(checked: boolean) {
     setMachines(
-      machines.map((m) => {
-        if (calendarPlans.some((p) => p.tool_number === m.tool_number))
-          return m;
-        return { ...m, selected: checked };
-      }),
+      machines.map((m) =>
+        calendarPlans.some((p) => p.tool_number === m.tool_number)
+          ? m
+          : { ...m, selected: checked },
+      ),
     );
   }
 
@@ -229,15 +221,12 @@ export default function WeeklyMaintenancePage() {
     updated[index].shift = val;
     setMachines(updated);
   }
-
-  // REPARAT: Logica de reutilizare sau generare unică a token-ului de aprobare securizat
   async function sendToProduction() {
     if (calendarPlans.length === 0) {
       alert("Nu există utilaje planificate pentru această săptămână.");
       return;
     }
 
-    // Cerința 6: Verifică dacă există deja un token salvat pentru această săptămână
     const existingPlanWithToken = calendarPlans.find(
       (p) => p.approval_token && p.approval_token.trim() !== "",
     );
@@ -246,13 +235,10 @@ export default function WeeklyMaintenancePage() {
       : null;
 
     if (!token) {
-      // Cerința 1: Generează un token unic aleatoriu dacă nu există deja unul creat
       token =
         "tok_" +
         Math.random().toString(36).substring(2, 15) +
         Math.random().toString(36).substring(2, 15);
-
-      // Cerința 2: Salvează token-ul nou în weekly_maintenance_plans pentru toate înregistrările corespunzătoare
       const { error } = await supabase
         .from("weekly_maintenance_plans")
         .update({ approval_token: token })
@@ -260,40 +246,28 @@ export default function WeeklyMaintenancePage() {
         .eq("year", currentYear);
 
       if (error) {
-        alert(`Eroare la securizarea link-ului: ${error.message}`);
+        alert(`Eroare la generarea token-ului: ${error.message}`);
         return;
       }
     }
 
-    // Cerința 3: Construiește URL-ul real pe baza variabilei de mediu de producție
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-    const finalUrl = `${baseUrl}/approval/${token}`;
-
-    setShareUrl(finalUrl);
+    setShareUrl(`${baseUrl}/approval/${token}`);
     setShowShareModal(true);
     await loadCurrentCalendar(weekNumber, currentYear);
   }
 
   async function clearPlan() {
-    if (
-      !confirm(
-        `Sigur dorești să ștergi planul pentru Săptămâna ${weekNumber}, ${currentYear}?`,
-      )
-    )
-      return;
+    if (!confirm("Sigur dorești să ștergi întregul plan?")) return;
     setLoading(true);
-    const { error } = await supabase
+    await supabase
       .from("weekly_maintenance_plans")
       .delete()
       .eq("week_number", weekNumber)
       .eq("year", currentYear);
     setLoading(false);
-    if (!error) {
-      setCalendarPlans([]);
-      alert("Plan șters.");
-    }
+    setCalendarPlans([]);
   }
-
   async function autoGeneratePlan() {
     setLoading(true);
     try {
@@ -303,17 +277,15 @@ export default function WeeklyMaintenancePage() {
         .eq("week_number", weekNumber)
         .eq("year", currentYear);
       const { weekStart, weekEnd } = getWeekDateRange(weekNumber, currentYear);
-      const { data: pmTasks } = await supabase
+
+      const { data } = await supabase
         .from("pm_tasks")
         .select("*")
         .gte("next_due_at", `${weekStart}T00:00:00.000Z`)
         .lte("next_due_at", `${weekEnd}T23:59:59.999Z`);
 
-      if (!pmTasks || pmTasks.length === 0) {
-        setLoading(false);
-        alert("Niciun PM scadent.");
-        return;
-      }
+      if (!data || data.length === 0) return;
+
       const groups: {
         [key: string]: {
           equipment: string;
@@ -321,7 +293,7 @@ export default function WeeklyMaintenancePage() {
           totalMinutes: number;
         };
       } = {};
-      pmTasks.forEach((t: any) => {
+      (data as PMTask[]).forEach((t) => {
         if (!groups[t.tool_number])
           groups[t.tool_number] = {
             equipment: t.equipment || "Unknown",
@@ -350,6 +322,7 @@ export default function WeeklyMaintenancePage() {
       await supabase.from("weekly_maintenance_plans").insert(records);
       await loadCurrentCalendar(weekNumber, currentYear);
     } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -400,14 +373,14 @@ export default function WeeklyMaintenancePage() {
       .from("weekly_maintenance_plans")
       .update({ planned_day: targetDay })
       .eq("id", Number(planId));
-    if (error) {
-      setCalendarPlans(previousState);
-    }
+
+    if (error) setCalendarPlans(previousState);
   }
 
   async function deletePlanTask(planId: string) {
     if (!confirm("Sigur dorești să ștergi acest utilaj?")) return;
     setCalendarPlans((prev) => prev.filter((p) => String(p.id) !== planId));
+
     await supabase
       .from("weekly_maintenance_plans")
       .delete()
@@ -415,15 +388,14 @@ export default function WeeklyMaintenancePage() {
     await loadCurrentCalendar(weekNumber, currentYear);
   }
 
-  function handleDragStart(e: DragStartEvent) {
-    console.log("Drag Start", e.active);
-  }
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over) return;
+
     const planId = String(active.id);
     const targetDay = String(over.id);
     const dragged = calendarPlans.find((p) => String(p.id) === planId);
+
     if (dragged && dragged.planned_day !== targetDay)
       updatePlannedDay(planId, targetDay);
   }
@@ -435,10 +407,14 @@ export default function WeeklyMaintenancePage() {
     const fourthOfJanuary = new Date(yr, 0, 4);
     const dayOfWeek = fourthOfJanuary.getDay();
     const isoWeek1Monday = new Date(fourthOfJanuary);
-    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    isoWeek1Monday.setDate(fourthOfJanuary.getDate() - daysToSubtract);
+    isoWeek1Monday.setDate(
+      fourthOfJanuary.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1),
+    );
+
     const targetMonday = new Date(isoWeek1Monday);
     targetMonday.setDate(isoWeek1Monday.getDate() + (weekNum - 1) * 7);
+    const actualDate = new Date(targetMonday);
+
     const dayOffsets: { [key: string]: number } = {
       MONDAY: 0,
       TUESDAY: 1,
@@ -448,9 +424,10 @@ export default function WeeklyMaintenancePage() {
       SATURDAY: 5,
       SUNDAY: 6,
     };
-    const offset = dayOffsets[plannedDay.toUpperCase()] ?? 0;
-    const actualDate = new Date(targetMonday);
-    actualDate.setDate(targetMonday.getDate() + offset);
+    actualDate.setDate(
+      targetMonday.getDate() + (dayOffsets[plannedDay.toUpperCase()] ?? 0),
+    );
+
     const months = [
       "Jan",
       "Feb",
@@ -470,20 +447,15 @@ export default function WeeklyMaintenancePage() {
 
   function exportPDF() {
     const doc = new jsPDF();
-    doc.setFont("helvetica", "bold").setFontSize(20).setTextColor(15, 23, 42);
-    doc.text("WEEKLY PREVENTIVE MAINTENANCE REQUEST", 14, 20);
-    doc.setFontSize(12).setTextColor(71, 85, 105);
-    doc.text(`Week ${weekNumber} / ${currentYear}`, 14, 27);
+    doc
+      .setFont("helvetica", "bold")
+      .setFontSize(20)
+      .text("WEEKLY PREVENTIVE MAINTENANCE REQUEST", 14, 20);
+    doc.setFontSize(12).text(`Week ${weekNumber} / ${currentYear}`, 14, 27);
     doc
       .setFont("helvetica", "normal")
       .setFontSize(10)
-      .setTextColor(100, 116, 139);
-    doc.text(
-      "Please review the proposed downtime windows and confirm machine availability.",
-      14,
-      33,
-    );
-    doc.setDrawColor(226, 232, 240).setLineWidth(0.5).line(14, 37, 196, 37);
+      .text("Please review proposed downtime windows.", 14, 33);
 
     const body = [...calendarPlans]
       .sort(
@@ -508,67 +480,19 @@ export default function WeeklyMaintenancePage() {
           "Shift",
           "Machine ID",
           "Equipment",
-          "Duration (min)",
-          "Production Confirmation",
+          "Duration",
+          "Confirmation",
         ],
       ],
       body: body,
-      headStyles: {
-        fillColor: "#0F172A",
-        textColor: "#FFFFFF",
-        fontStyle: "bold",
-        fontSize: 10,
-      },
-      bodyStyles: { fontSize: 9, textColor: "#334155" },
-      alternateRowStyles: { fillColor: "#F8FAFC" },
-      margin: { top: 40, left: 14, right: 14 },
       theme: "striped",
     });
-
-    let currentY = (doc as any).lastAutoTable.finalY + 12;
-    doc.setFillColor(248, 250, 252).rect(14, currentY, 182, 16, "F");
-    doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(15, 23, 42);
-    doc.text(
-      `Total Planned Machines: ${calendarPlans.length}`,
-      20,
-      currentY + 10,
-    );
-    doc.text(
-      `Total Planned Downtime: ${calendarPlans.reduce((sum, p) => sum + p.duration_minutes, 0)} min`,
-      110,
-      currentY + 10,
-    );
-
-    currentY += 26;
-    doc.text("Production Comments", 14, currentY);
-    doc.setFont("helvetica", "normal").setTextColor(148, 163, 184);
-    doc.text(
-      "_________________________________________________________________________________",
-      14,
-      currentY + 8,
-    );
-    doc.text(
-      "_________________________________________________________________________________",
-      14,
-      currentY + 18,
-    );
-
-    currentY += 44;
-    doc.setFont("helvetica", "bold").setTextColor(51, 65, 85);
-    doc.text("Confirmed by: __________________________", 14, currentY);
-    doc.text("Date: _________________________________", 115, currentY);
     doc.save(`Production_Downtime_Request_W${weekNumber}_${currentYear}.pdf`);
   }
-
-  // REPARAT: Logica de indexare TypeScript corectă utilizând mapare pe vectorul de frecvențe
   function renderFrequencyBadge(freqString: string, currentFilter: string) {
     const freqs = freqString ? freqString.split(", ") : [];
     if (freqs.length === 0)
-      return (
-        <span className="text-[11px] font-medium text-slate-400 italic">
-          N/A
-        </span>
-      );
+      return <span className="text-slate-400 italic">N/A</span>;
 
     const mapping: { [key: string]: { label: string; style: string } } = {
       "1S": {
@@ -598,62 +522,51 @@ export default function WeeklyMaintenancePage() {
     };
 
     return (
-      <div className="flex flex-wrap gap-1">
-        {freqs.map((f) => {
-          const config = mapping[f] || {
-            label: f,
-            style: "bg-slate-100 text-slate-800 border-slate-200",
-          };
-          return (
-            <span
-              key={f}
-              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border tracking-wide whitespace-nowrap ${config.style}`}
-            >
-              {config.label}
-            </span>
-          );
-        })}
+      <div className="flex gap-1 flex-wrap">
+        {freqs.map((f) => (
+          <span
+            key={f}
+            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${mapping[f]?.style || "bg-slate-100"}`}
+          >
+            {mapping[f]?.label || f}
+          </span>
+        ))}
       </div>
     );
   }
-
   return (
     <div className="p-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b pb-5">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-3xl font-extrabold text-slate-900">
             Weekly Preventive Maintenance Planner
           </h1>
-          <div className="flex flex-wrap items-center gap-6 mt-3">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                <span>Week:</span>
-                <input
-                  type="number"
-                  value={weekNumber}
-                  onChange={(e) => {
-                    const w = Number(e.target.value);
-                    setWeekNumber(w);
-                    loadData(w, currentYear, frequencyFilter);
-                  }}
-                  className="w-14 border rounded px-1.5 py-0.5 text-center font-bold"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                <span>Year:</span>
-                <input
-                  type="number"
-                  value={currentYear}
-                  onChange={(e) => {
-                    const y = Number(e.target.value);
-                    setCurrentYear(y);
-                    loadData(weekNumber, y, frequencyFilter);
-                  }}
-                  className="w-20 border rounded px-1.5 py-0.5 text-center font-bold"
-                />
-              </div>
+          <div className="flex flex-wrap items-center gap-4 mt-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span>Week:</span>
+              <input
+                type="number"
+                value={weekNumber}
+                onChange={(e) => {
+                  const w = Number(e.target.value);
+                  setWeekNumber(w);
+                  loadData(w, currentYear, frequencyFilter);
+                }}
+                className="w-14 border rounded text-center font-bold"
+              />
+              <span>Year:</span>
+              <input
+                type="number"
+                value={currentYear}
+                onChange={(e) => {
+                  const y = Number(e.target.value);
+                  setCurrentYear(y);
+                  loadData(weekNumber, y, frequencyFilter);
+                }}
+                className="w-20 border rounded text-center font-bold"
+              />
             </div>
-            <div className="inline-flex rounded-lg border bg-slate-100 p-0.5 shadow-sm">
+            <div className="inline-flex rounded-lg border bg-slate-100 p-0.5">
               {FREQUENCY_OPTIONS.map((opt) => (
                 <button
                   key={opt}
@@ -664,8 +577,7 @@ export default function WeeklyMaintenancePage() {
                 </button>
               ))}
             </div>
-
-            <div className="inline-flex rounded-lg border bg-slate-100 p-0.5 shadow-sm">
+            <div className="inline-flex rounded-lg border bg-slate-100 p-0.5">
               <span className="text-xs text-slate-400 self-center px-2">
                 Approval View:
               </span>
@@ -681,12 +593,11 @@ export default function WeeklyMaintenancePage() {
             </div>
           </div>
         </div>
-
-        <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex flex-wrap gap-2">
           <select
             value={globalAutoShift}
             onChange={(e) => setGlobalAutoShift(e.target.value)}
-            className="border rounded-lg p-2 text-sm bg-white font-semibold shadow-sm"
+            className="border rounded-lg p-2 text-sm bg-white font-semibold"
           >
             {SHIFT_OPTIONS.map((s) => (
               <option key={s} value={s}>
@@ -696,156 +607,165 @@ export default function WeeklyMaintenancePage() {
           </select>
           <button
             onClick={autoGeneratePlan}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm text-sm"
+            className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
           >
             🤖 Auto Plan
           </button>
           <button
             onClick={manualGeneratePlan}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm text-sm"
+            className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
             ✍️ Manual Plan
           </button>
           <button
             onClick={exportPDF}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm text-sm"
+            className="bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
           >
             Export PDF
           </button>
           <button
             onClick={sendToProduction}
-            className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm text-sm"
+            className="bg-amber-50 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors"
           >
             📧 Send To Production
           </button>
           <button
             onClick={clearPlan}
-            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm text-sm"
+            className="bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
           >
             Clear
           </button>
         </div>
       </div>
       {loading ? (
-        <div className="flex justify-center py-12">
-          <p className="text-slate-500 animate-pulse">Loading data...</p>
-        </div>
+        <p className="text-center py-12 text-slate-500 font-medium">
+          Loading data...
+        </p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b bg-slate-100 text-slate-700 text-xs font-semibold uppercase">
-                  <th className="py-3 px-4 w-12 text-center">
-                    <input
-                      type="checkbox"
-                      onChange={(e) => handleSelectAllChange(e.target.checked)}
-                    />
-                  </th>
-                  <th className="py-3 px-4">Tool</th>
-                  <th className="py-3 px-4">Equipment</th>
-                  <th className="py-3 px-4 text-center">Tasks</th>
-                  <th className="py-3 px-4">Frequency</th>
-                  <th className="py-3 px-4 w-24">Duration</th>
-                  <th className="py-3 px-4 w-32">Shift</th>
-                  <th className="py-3 px-4 w-32">Day</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-sm text-slate-700">
-                {machines.map((machine, index) => {
-                  const isAlreadyPlanned = calendarPlans.some(
-                    (p) => p.tool_number === machine.tool_number,
-                  );
-                  const planData = calendarPlans.find(
-                    (p) => p.tool_number === machine.tool_number,
-                  );
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b bg-slate-100 text-slate-700 text-xs font-bold uppercase">
+                    <th className="py-3 px-4 w-12 text-center">
+                      <input
+                        type="checkbox"
+                        onChange={(e) =>
+                          handleSelectAllChange(e.target.checked)
+                        }
+                      />
+                    </th>
+                    <th>Tool</th>
+                    <th>Equipment</th>
+                    <th>Tasks</th>
+                    <th>Frequency</th>
+                    <th>Duration</th>
+                    <th>Shift</th>
+                    <th>Day</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y text-sm text-slate-700">
+                  {machines.map((machine, index) => {
+                    const isAlreadyPlanned = calendarPlans.some(
+                      (p) => p.tool_number === machine.tool_number,
+                    );
+                    const planData = calendarPlans.find(
+                      (p) => p.tool_number === machine.tool_number,
+                    );
 
-                  if (
-                    approvalFilter !== "ALL" &&
-                    planData?.production_status !== approvalFilter
-                  ) {
-                    if (!(approvalFilter === "PENDING" && !isAlreadyPlanned))
-                      return null;
-                  }
+                    if (
+                      approvalFilter !== "ALL" &&
+                      planData?.production_status !== approvalFilter
+                    ) {
+                      if (!(approvalFilter === "PENDING" && !isAlreadyPlanned))
+                        return null;
+                    }
 
-                  return (
-                    <tr
-                      key={machine.tool_number}
-                      className={
-                        isAlreadyPlanned ? "bg-emerald-50" : "hover:bg-slate-50"
-                      }
-                    >
-                      <td className="py-3.5 px-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isAlreadyPlanned ? true : machine.selected}
-                          disabled={isAlreadyPlanned}
-                          onChange={(e) =>
-                            handleCheckboxChange(index, e.target.checked)
-                          }
-                        />
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-bold">
-                        {machine.tool_number}
-                      </td>
-                      <td className="py-3.5 px-4">{machine.equipment}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        {machine.number_of_tasks}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {renderFrequencyBadge(
-                          machine.frequency,
-                          frequencyFilter,
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <input
-                          type="number"
-                          value={machine.duration_minutes}
-                          disabled={isAlreadyPlanned}
-                          onChange={(e) =>
-                            handleDurationChange(index, Number(e.target.value))
-                          }
-                          className="w-full border rounded text-center"
-                        />
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <select
-                          value={planData?.shift || machine.shift}
-                          disabled={isAlreadyPlanned}
-                          onChange={(e) =>
-                            handleShiftChange(index, e.target.value)
-                          }
-                          className="w-full border rounded"
-                        >
-                          {SHIFT_OPTIONS.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <select
-                          value={planData?.planned_day || machine.planned_day}
-                          disabled={isAlreadyPlanned}
-                          onChange={(e) =>
-                            handleDayChange(index, e.target.value)
-                          }
-                          className="w-full border rounded"
-                        >
-                          {DAYS_OF_WEEK.map((d) => (
-                            <option key={d} value={d}>
-                              {d}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    return (
+                      <tr
+                        key={machine.tool_number}
+                        className={
+                          isAlreadyPlanned
+                            ? "bg-emerald-50/60"
+                            : "hover:bg-slate-50"
+                        }
+                      >
+                        <td className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={isAlreadyPlanned ? true : machine.selected}
+                            disabled={isAlreadyPlanned}
+                            onChange={(e) =>
+                              handleCheckboxChange(index, e.target.checked)
+                            }
+                          />
+                        </td>
+                        <td className="font-mono font-bold py-3 px-4">
+                          {machine.tool_number}
+                        </td>
+                        <td>{machine.equipment}</td>
+                        <td className="text-center">
+                          {machine.number_of_tasks}
+                        </td>
+                        <td>
+                          {renderFrequencyBadge(
+                            machine.frequency,
+                            frequencyFilter,
+                          )}
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={machine.duration_minutes}
+                            disabled={isAlreadyPlanned}
+                            onChange={(e) =>
+                              handleDurationChange(
+                                index,
+                                Number(e.target.value),
+                              )
+                            }
+                            className="w-full border rounded text-center bg-white"
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={planData?.shift || machine.shift}
+                            disabled={isAlreadyPlanned}
+                            onChange={(e) =>
+                              handleShiftChange(index, e.target.value)
+                            }
+                            className="w-full border rounded p-1 bg-white"
+                          >
+                            {SHIFT_OPTIONS.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={planData?.planned_day || machine.planned_day}
+                            disabled={isAlreadyPlanned}
+                            onChange={(e) =>
+                              handleDayChange(index, e.target.value)
+                            }
+                            className="w-full border rounded p-1 bg-white"
+                          >
+                            {DAYS_OF_WEEK.map((d) => (
+                              <option key={d} value={d}>
+                                {d}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border p-6 self-start">
             <h2 className="text-xl font-bold text-slate-900 mb-5 border-b pb-3">
@@ -854,7 +774,6 @@ export default function WeeklyMaintenancePage() {
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
               <div className="space-y-6">
@@ -886,40 +805,37 @@ export default function WeeklyMaintenancePage() {
         </div>
       )}
 
-      {/* CORECTAT: Afișare URL real generat în loc de placeholder static în modal */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black/50 flex justify-center items-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border">
             <div className="text-center mb-4">
               <span className="text-3xl">🔒</span>
               <h3 className="text-lg font-black text-slate-900 mt-2">
                 Link de Aprobare Securizat
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                Producția va accesa doar tabelul izolat, fără meniuri interne.
+                Producția va accesa doar tabelul izolat public.
               </p>
             </div>
-            {/* Cerința 4: Afișarea URL-ului real generat dinamic în input-ul modalului */}
             <input
               type="text"
               readOnly
               value={shareUrl}
-              className="w-full border p-2.5 rounded-lg text-xs bg-slate-50 font-mono mb-4 text-blue-600 select-all font-bold text-center"
+              className="w-full border p-2.5 rounded-lg text-xs bg-slate-50 font-mono mb-4 text-blue-600 font-bold text-center select-all"
             />
             <div className="flex gap-2">
-              {/* Cerința 5: Butonul Copiază URL preia și transferă link-ul real în clipboard */}
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(shareUrl);
-                  alert("Link public copiat!");
+                  alert("Link copiat!");
                 }}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 rounded-lg transition-colors"
+                className="flex-1 bg-blue-600 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Copiază URL
               </button>
               <button
                 onClick={() => setShowShareModal(false)}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-lg transition-colors"
+                className="bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-lg hover:bg-slate-300 transition-colors"
               >
                 Închide
               </button>
@@ -986,7 +902,7 @@ function DraggableCard({
       style={style}
       {...listeners}
       {...attributes}
-      className={`flex justify-between items-center text-sm bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg border transition-all select-none cursor-grab active:cursor-grabbing ${isDragging ? "opacity-30 scale-95 shadow-none" : "shadow-sm border-slate-200"}`}
+      className={`flex justify-between items-center text-sm bg-white px-3 py-1.5 rounded-lg border select-none cursor-grab active:cursor-grabbing ${isDragging ? "opacity-30 scale-95" : "shadow-sm border-slate-200 hover:bg-slate-50 transition-colors"}`}
     >
       <div className="flex items-center gap-1.5">
         <button
@@ -994,21 +910,21 @@ function DraggableCard({
             e.stopPropagation();
             onDelete(id);
           }}
-          className="text-slate-300 hover:text-red-500 transition-colors p-0.5"
+          className="text-slate-300 hover:text-red-500 transition-colors"
         >
           ✕
         </button>
-        <span className="font-mono font-black text-slate-800 tracking-tight">
+        <span className="font-mono font-black text-slate-800">
           {toolNumber}
         </span>
         <span className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded font-bold">
           {shift?.replace("SHIFT ", "S") || "S1"}
         </span>
-        <span title={`Status: ${status || "PENDING"}`} className="text-xs">
+        <span title={`Status: ${status || "PENDING"}`}>
           {icons[status || "PENDING"]}
         </span>
       </div>
-      <span className="text-[11px] font-bold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+      <span className="text-[11px] font-bold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border">
         {duration}m
       </span>
     </div>
