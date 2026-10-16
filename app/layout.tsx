@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import { LanguageProvider } from "@/context/LanguageContext";
+import { supabase } from "@/lib/supabase";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { cn } from "@/lib/utils";
@@ -29,11 +30,51 @@ export default function RootLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  // 1. Setări temporare hardcoded pentru testare
-  const [isProductionUser, setIsProductionUser] = useState(true);
-  const [checkingAuth, setCheckingAuth] = useState(false);
+  // 1. Am eliminat valorile hardcodate. Starea pornește acum neutră.
+  const [isProductionUser, setIsProductionUser] = useState<boolean>(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // 2. Păstrăm doar logica de redirecționare automată pentru rute
+  // 2. Interogare corectă în Supabase prin legătura de EMAIL (Puntea între UUID și BigInt)
+  useEffect(() => {
+    async function verifyUserAccess() {
+      try {
+        // Obținem utilizatorul din modulul de autentificare
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user || !user.email) {
+          setIsProductionUser(false);
+          setCheckingAuth(false);
+          return;
+        }
+
+        // Căutăm în tabela ta users după EMAIL pentru a evita eroarea UUID vs BigInt
+        const { data: userData, error: dbError } = await supabase
+          .from("users")
+          .select("is_production_user")
+          .eq("email", user.email)
+          .maybeSingle();
+
+        if (dbError || !userData) {
+          setIsProductionUser(false);
+        } else {
+          // Salvăm valoarea reală din baza de date (true sau false)
+          setIsProductionUser(!!userData.is_production_user);
+        }
+      } catch (err) {
+        console.error("Eroare la verificarea accesului:", err);
+        setIsProductionUser(false);
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+
+    verifyUserAccess();
+  }, [pathname]); // Se re-verifică la schimbarea paginii pentru siguranță
+
+  // 3. Logica de redirecționare automată bazată pe starea dinamică reală
   useEffect(() => {
     if (checkingAuth || !isProductionUser) return;
 
@@ -44,6 +85,33 @@ export default function RootLayout({
       router.push("/weekly-maintenance");
     }
   }, [isProductionUser, pathname, checkingAuth, router]);
+
+  // 4. Funcția de deconectare completă
+  async function handleGlobalSignOut() {
+    if (!confirm("Sigur dorești să te deconectezi?")) return;
+
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error(err);
+    }
+
+    // Curățăm starea locală înainte de a părăsi pagina
+    setIsProductionUser(false);
+    setCheckingAuth(true);
+
+    // Forțăm reîncărcarea pe rădăcină (unde se va opri deoarece isProductionUser devine false)
+    window.location.replace("/");
+  }
 
   return (
     <html
@@ -70,7 +138,7 @@ export default function RootLayout({
           content="black-translucent"
         />
       </head>
-      <body className="min-h-screen w-full flex bg-gray-50 text-slate-900 overflow-x-hidden antialiased">
+      <body className="min-h-screen w-full flex flex-col bg-gray-50 text-slate-900 overflow-x-hidden antialiased">
         <Toaster position="top-right" reverseOrder={false} />
 
         <LanguageProvider>
@@ -79,21 +147,39 @@ export default function RootLayout({
               Se încarcă configurația...
             </div>
           ) : (
-            <>
-              {/* 3. Ascundere Sidebar bazată pe starea hardcoded */}
+            <div className="flex-1 w-full flex min-h-screen">
+              {/* Afișează Sidebar-ul DOAR dacă utilizatorul NU este de producție */}
               {!isProductionUser && <Sidebar />}
 
-              {/* 4. Ajustare Main Layout pe toată lățimea ecranului */}
-              <main
-                className={
-                  isProductionUser
-                    ? "w-full p-0 flex-1 min-h-screen bg-slate-50"
-                    : "flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto"
-                }
-              >
-                {children}
-              </main>
-            </>
+              <div className="flex-1 flex flex-col min-w-0 w-full">
+                {isProductionUser && (
+                  <header className="w-full bg-slate-900 text-white px-6 py-3 flex justify-between items-center shadow-md shrink-0 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">⚙️</span>
+                      <span className="font-bold text-sm tracking-wide uppercase text-slate-200">
+                        Metal Stamping Operational Area
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleGlobalSignOut}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+                    >
+                      🚪 Deconectare Cont
+                    </button>
+                  </header>
+                )}
+
+                <main
+                  className={
+                    isProductionUser
+                      ? "w-full p-0 flex-1 min-h-0 bg-slate-50 overflow-y-auto"
+                      : "flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto"
+                  }
+                >
+                  {children}
+                </main>
+              </div>
+            </div>
           )}
         </LanguageProvider>
       </body>
