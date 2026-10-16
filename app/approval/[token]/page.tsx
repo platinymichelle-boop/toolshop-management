@@ -26,6 +26,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
 
   const [plans, setPlans] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [comments, setComments] = useState<{ [key: string]: string }>({});
   const [weekInfo, setWeekInfo] = useState<{
     week: number;
@@ -59,31 +60,56 @@ export default function PublicApprovalPage({ params }: PageProps) {
     }
     setLoading(false);
   }
-  async function updateStatus(id: string, status: "APPROVED" | "REJECTED") {
-    const comment = comments[id] || "";
-
+  function handleLocalStatusChange(
+    id: string,
+    status: "APPROVED" | "REJECTED",
+  ) {
     setPlans((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, production_status: status, production_comment: comment }
-          : p,
-      ),
+      prev.map((p) => (p.id === id ? { ...p, production_status: status } : p)),
     );
+  }
 
-    const { error } = await supabase
-      .from("weekly_maintenance_plans")
-      .update({
-        production_status: status,
-        production_comment: comment,
-        approved_at: new Date().toISOString(),
-        approved_by: "Production Public Portal",
-      })
-      .eq("id", Number(id))
-      .eq("approval_token", token);
+  async function handleSubmitBulkDecision() {
+    const hasPending = plans.some((p) => p.production_status === "PENDING");
+    if (hasPending) {
+      if (
+        !confirm("Mai aveți utilaje în așteptare. Trimiteți decizia parțială?")
+      )
+        return;
+    } else {
+      if (
+        !confirm(
+          "Sigur doriți să transmiteți decizia finală către echipa de mentenanță?",
+        )
+      )
+        return;
+    }
 
-    if (error) {
-      alert(`Eroare la salvare: ${error.message}`);
-      fetchPlansByToken();
+    setSubmitting(true);
+    try {
+      const updatePromises = plans.map((p) =>
+        supabase
+          .from("weekly_maintenance_plans")
+          .update({
+            production_status: p.production_status,
+            production_comment: comments[p.id] || "",
+            approved_at: new Date().toISOString(),
+            approved_by: "Production Public Portal",
+          })
+          .eq("id", p.id)
+          .eq("approval_token", token),
+      );
+
+      await Promise.all(updatePromises);
+      alert(
+        "Toate modificările au fost salvate și transmise instant în planner!",
+      );
+      await fetchPlansByToken();
+    } catch (err) {
+      console.error(err);
+      alert("A apărut o eroare la salvarea centralizată a datelor.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -107,7 +133,6 @@ export default function PublicApprovalPage({ params }: PageProps) {
       </div>
     );
   }
-
   if (plans.length === 0) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-slate-100 p-4">
@@ -124,6 +149,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
       </div>
     );
   }
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 select-none">
       <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-sm border p-6 md:p-8">
@@ -137,7 +163,7 @@ export default function PublicApprovalPage({ params }: PageProps) {
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               Sursă securizată externă. Schimbările efectuate aici se transmit
-              instant plannerului de mentenanță.
+              instant plannerului.
             </p>
           </div>
           <div className="text-right">
@@ -244,14 +270,14 @@ export default function PublicApprovalPage({ params }: PageProps) {
                   </td>
                   <td className="py-4 px-4 text-right space-x-1.5 whitespace-nowrap">
                     <button
-                      onClick={() => updateStatus(p.id, "APPROVED")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-sm transition-colors"
+                      onClick={() => handleLocalStatusChange(p.id, "APPROVED")}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-md shadow-sm transition-colors ${p.production_status === "APPROVED" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-emerald-50"}`}
                     >
                       ✅ Approve
                     </button>
                     <button
-                      onClick={() => updateStatus(p.id, "REJECTED")}
-                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-sm transition-colors"
+                      onClick={() => handleLocalStatusChange(p.id, "REJECTED")}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-md shadow-sm transition-colors ${p.production_status === "REJECTED" ? "bg-red-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-red-50"}`}
                     >
                       ❌ Reject
                     </button>
@@ -260,6 +286,16 @@ export default function PublicApprovalPage({ params }: PageProps) {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="flex justify-end mt-6 border-t pt-4">
+          <button
+            onClick={handleSubmitBulkDecision}
+            disabled={submitting}
+            className={`bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm px-8 py-3 rounded-xl shadow-md transition-all ${submitting ? "opacity-50 cursor-not-allowed animate-pulse" : ""}`}
+          >
+            {submitting ? "Se salvează datele..." : "🚀 Trimite Decizia Finală"}
+          </button>
         </div>
       </div>
     </div>
