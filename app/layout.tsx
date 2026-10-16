@@ -149,8 +149,12 @@ export default function RootLayout({
               {!shouldHideSidebar && <Sidebar />}
 
               <div className="flex-1 flex flex-col min-w-0 w-full">
-                {/* Antetul de producție apare pe pagina internă sau la aprobare, oferind și butonul de logout */}
-                {shouldHideSidebar && (
+                {/* 
+                  [LOGICĂ MODIFICATĂ] 
+                  Antetul utiliar se randează doar pentru utilizatorii de producție 
+                  și DOAR dacă NU se află pe pagina dedicată aprobărilor trimise pe email.
+                */}
+                {shouldHideSidebar && !isApprovalPage && (
                   <header className="w-full bg-slate-900 text-white px-6 py-3 flex justify-between items-center shadow-md shrink-0 border-b border-slate-800">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">⚙️</span>
