@@ -30,15 +30,15 @@ export default function RootLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  // 1. Am eliminat valorile hardcodate. Starea pornește acum neutră.
   const [isProductionUser, setIsProductionUser] = useState<boolean>(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // 2. Interogare corectă în Supabase prin legătura de EMAIL (Puntea între UUID și BigInt)
+  // Verificăm instant dacă utilizatorul accesează un link de aprobare trimis pe email
+  const isApprovalPage = pathname.startsWith("/approval/");
+
   useEffect(() => {
     async function verifyUserAccess() {
       try {
-        // Obținem utilizatorul din modulul de autentificare
         const {
           data: { user },
           error: authError,
@@ -50,7 +50,6 @@ export default function RootLayout({
           return;
         }
 
-        // Căutăm în tabela ta users după EMAIL pentru a evita eroarea UUID vs BigInt
         const { data: userData, error: dbError } = await supabase
           .from("users")
           .select("is_production_user")
@@ -60,7 +59,6 @@ export default function RootLayout({
         if (dbError || !userData) {
           setIsProductionUser(false);
         } else {
-          // Salvăm valoarea reală din baza de date (true sau false)
           setIsProductionUser(!!userData.is_production_user);
         }
       } catch (err) {
@@ -72,21 +70,20 @@ export default function RootLayout({
     }
 
     verifyUserAccess();
-  }, [pathname]); // Se re-verifică la schimbarea paginii pentru siguranță
+  }, [pathname]);
 
-  // 3. Logica de redirecționare automată bazată pe starea dinamică reală
+  // Logica de redirecționare automată: utilizatorii de producție sunt ținuți doar pe zonele lor permise
   useEffect(() => {
     if (checkingAuth || !isProductionUser) return;
 
     const isWeeklyMaintenance = pathname === "/weekly-maintenance";
-    const isApprovalPage = pathname.startsWith("/approval/");
 
     if (!isWeeklyMaintenance && !isApprovalPage) {
       router.push("/weekly-maintenance");
     }
-  }, [isProductionUser, pathname, checkingAuth, router]);
+  }, [isProductionUser, pathname, checkingAuth, router, isApprovalPage]);
 
-  // 4. Funcția de deconectare completă
+  // Funcția de deconectare completă
   async function handleGlobalSignOut() {
     if (!confirm("Sigur dorești să te deconectezi?")) return;
 
@@ -105,13 +102,13 @@ export default function RootLayout({
       console.error(err);
     }
 
-    // Curățăm starea locală înainte de a părăsi pagina
     setIsProductionUser(false);
     setCheckingAuth(true);
-
-    // Forțăm reîncărcarea pe rădăcină (unde se va opri deoarece isProductionUser devine false)
     window.location.replace("/");
   }
+
+  // Stabilim dacă ascundem Sidebar-ul: îl ascundem dacă e utilizator de producție SAU dacă suntem pe o pagină de aprobare publică
+  const shouldHideSidebar = isProductionUser || isApprovalPage;
 
   return (
     <html
@@ -148,11 +145,12 @@ export default function RootLayout({
             </div>
           ) : (
             <div className="flex-1 w-full flex min-h-screen">
-              {/* Afișează Sidebar-ul DOAR dacă utilizatorul NU este de producție */}
-              {!isProductionUser && <Sidebar />}
+              {/* Sidebar-ul se ascunde complet dacă ar trebui ascuns */}
+              {!shouldHideSidebar && <Sidebar />}
 
               <div className="flex-1 flex flex-col min-w-0 w-full">
-                {isProductionUser && (
+                {/* Antetul de producție apare pe pagina internă sau la aprobare, oferind și butonul de logout */}
+                {shouldHideSidebar && (
                   <header className="w-full bg-slate-900 text-white px-6 py-3 flex justify-between items-center shadow-md shrink-0 border-b border-slate-800">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">⚙️</span>
@@ -169,9 +167,10 @@ export default function RootLayout({
                   </header>
                 )}
 
+                {/* Main-ul se extinde acum pe tot ecranul, eliminând padding-ul când Sidebar-ul este ascuns */}
                 <main
                   className={
-                    isProductionUser
+                    shouldHideSidebar
                       ? "w-full p-0 flex-1 min-h-0 bg-slate-50 overflow-y-auto"
                       : "flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto"
                   }
