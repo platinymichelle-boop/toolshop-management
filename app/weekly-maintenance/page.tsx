@@ -52,10 +52,19 @@ interface MaintenancePlan {
   approval_token?: string | null;
 }
 
-const DAYS_OF_WEEK = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+const DAYS_OF_WEEK = [
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+  "SUNDAY",
+];
 const FREQUENCY_OPTIONS = ["ALL", "WEEKLY", "MONTHLY", "YEARLY"];
 const SHIFT_OPTIONS = ["SHIFT 1", "SHIFT 2", "SHIFT 3"];
 const APPROVAL_FILTERS = ["ALL", "PENDING", "APPROVED", "REJECTED"];
+
 export default function WeeklyMaintenancePage() {
   const [machines, setMachines] = useState<GroupedMachine[]>([]);
   const [calendarPlans, setCalendarPlans] = useState<MaintenancePlan[]>([]);
@@ -96,6 +105,7 @@ export default function WeeklyMaintenancePage() {
     }
     return 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
   }
+
   function getWeekDateRange(weekNum: number, yr: number) {
     const fourthOfJanuary = new Date(yr, 0, 4);
     const dayOfWeek = fourthOfJanuary.getDay();
@@ -116,7 +126,6 @@ export default function WeeklyMaintenancePage() {
       weekEnd: formatDate(targetSunday),
     };
   }
-
   async function loadData(w: number, y: number, freq: string) {
     setLoading(true);
     await Promise.all([loadAvailableTasks(freq), loadCurrentCalendar(w, y)]);
@@ -221,6 +230,7 @@ export default function WeeklyMaintenancePage() {
     updated[index].shift = val;
     setMachines(updated);
   }
+
   async function sendToProduction() {
     if (calendarPlans.length === 0) {
       alert("Nu există utilaje planificate pentru această săptămână.");
@@ -233,12 +243,12 @@ export default function WeeklyMaintenancePage() {
     let token = existingPlanWithToken
       ? existingPlanWithToken.approval_token
       : null;
-
     if (!token) {
       token =
         "tok_" +
         Math.random().toString(36).substring(2, 15) +
         Math.random().toString(36).substring(2, 15);
+
       const { error } = await supabase
         .from("weekly_maintenance_plans")
         .update({ approval_token: token })
@@ -268,6 +278,7 @@ export default function WeeklyMaintenancePage() {
     setLoading(false);
     setCalendarPlans([]);
   }
+
   async function autoGeneratePlan() {
     setLoading(true);
     try {
@@ -327,6 +338,7 @@ export default function WeeklyMaintenancePage() {
       setLoading(false);
     }
   }
+
   async function manualGeneratePlan() {
     const validSelected = machines.filter(
       (m) =>
@@ -348,7 +360,6 @@ export default function WeeklyMaintenancePage() {
       production_status: "PENDING",
       shift: m.shift,
     }));
-
     const { error } = await supabase
       .from("weekly_maintenance_plans")
       .insert(records);
@@ -372,7 +383,7 @@ export default function WeeklyMaintenancePage() {
     const { error } = await supabase
       .from("weekly_maintenance_plans")
       .update({ planned_day: targetDay })
-      .eq("id", Number(planId));
+      .eq("id", planId);
 
     if (error) setCalendarPlans(previousState);
   }
@@ -381,10 +392,7 @@ export default function WeeklyMaintenancePage() {
     if (!confirm("Sigur dorești să ștergi acest utilaj?")) return;
     setCalendarPlans((prev) => prev.filter((p) => String(p.id) !== planId));
 
-    await supabase
-      .from("weekly_maintenance_plans")
-      .delete()
-      .eq("id", Number(planId));
+    await supabase.from("weekly_maintenance_plans").delete().eq("id", planId);
     await loadCurrentCalendar(weekNumber, currentYear);
   }
 
@@ -399,6 +407,7 @@ export default function WeeklyMaintenancePage() {
     if (dragged && dragged.planned_day !== targetDay)
       updatePlannedDay(planId, targetDay);
   }
+
   function getDateFromPlannedDay(
     weekNum: number,
     yr: number,
@@ -424,8 +433,10 @@ export default function WeeklyMaintenancePage() {
       SATURDAY: 5,
       SUNDAY: 6,
     };
-    actualDate.setDate(
-      targetMonday.getDate() + (dayOffsets[plannedDay.toUpperCase()] ?? 0),
+
+    actualDate.setTime(
+      targetMonday.getTime() +
+        (dayOffsets[plannedDay.toUpperCase()] ?? 0) * 86400000,
     );
 
     const months = [
@@ -447,6 +458,8 @@ export default function WeeklyMaintenancePage() {
 
   function exportPDF() {
     const doc = new jsPDF();
+
+    // 1. Antetul Documentului
     doc
       .setFont("helvetica", "bold")
       .setFontSize(20)
@@ -457,21 +470,47 @@ export default function WeeklyMaintenancePage() {
       .setFontSize(10)
       .text("Please review proposed downtime windows.", 14, 33);
 
-    const body = [...calendarPlans]
-      .sort(
-        (a, b) =>
-          DAYS_OF_WEEK.indexOf(a.planned_day) -
-          DAYS_OF_WEEK.indexOf(b.planned_day),
-      )
-      .map((p) => [
-        getDateFromPlannedDay(weekNumber, currentYear, p.planned_day),
-        p.shift || "SHIFT 1",
-        p.tool_number,
-        p.machine_name || "N/A",
-        `${p.duration_minutes} min`,
-        "  [  ] OK   [  ] REJ",
-      ]);
+    // Decidem sursa datelor (Calendarul salvat sau tabelul brut configurat de pe ecran)
+    const sourceData =
+      calendarPlans.length > 0
+        ? [...calendarPlans].sort(
+            (a, b) =>
+              DAYS_OF_WEEK.indexOf(a.planned_day) -
+              DAYS_OF_WEEK.indexOf(b.planned_day),
+          )
+        : machines
+            .map((m) => ({
+              planned_day: m.planned_day,
+              shift: m.shift,
+              tool_number: m.tool_number,
+              machine_name: m.equipment,
+              duration_minutes: m.duration_minutes,
+            }))
+            .sort(
+              (a, b) =>
+                DAYS_OF_WEEK.indexOf(a.planned_day) -
+                DAYS_OF_WEEK.indexOf(b.planned_day),
+            );
 
+    // 2. Calcularea Statisticilor (Totaluri)
+    const totalMachines = sourceData.length;
+    const totalMinutes = sourceData.reduce(
+      (sum, item) => sum + (item.duration_minutes || 0),
+      0,
+    );
+    const totalHours = (totalMinutes / 60).toFixed(1);
+
+    // Construirea rândurilor pentru tabel
+    const body = sourceData.map((p) => [
+      getDateFromPlannedDay(weekNumber, currentYear, p.planned_day),
+      p.shift || "SHIFT 1",
+      p.tool_number,
+      p.machine_name || "N/A",
+      `${p.duration_minutes} min`,
+      "  [  ] OK   [  ] REJ",
+    ]);
+
+    // 3. Generarea Tabelului Principal
     autoTable(doc, {
       startY: 43,
       head: [
@@ -486,9 +525,45 @@ export default function WeeklyMaintenancePage() {
       ],
       body: body,
       theme: "striped",
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [41, 128, 185] }, // Culoarea albastră originală pentru header
     });
+
+    // Punctul de ancorare de unde s-a terminat tabelul
+    const finalY = (doc as any).lastAutoTable.finalY || 45;
+
+    // 4. Adăugarea Secțiunii de Totaluri (Total Machines & Total Time)
+    doc.setFont("helvetica", "bold").setFontSize(10);
+    doc.text(`Total Planned Machines: ${totalMachines}`, 14, finalY + 12);
+    doc.text(
+      `Total Maintenance Time: ${totalMinutes} min (~${totalHours} hours)`,
+      14,
+      finalY + 18,
+    );
+
+    // 5. Adăugarea Zonei de Semnături (Signature Section)
+    const signatureY = finalY + 40;
+
+    // Linie separatoare discretă înainte de semnături
+    doc.setDrawColor(200, 200, 200);
+    doc.line(14, signatureY - 10, 196, signatureY - 10);
+
+    doc.setFontSize(10).setFont("helvetica", "bold");
+    doc.text("Prepared By (Maintenance Lead):", 14, signatureY);
+    doc.line(14, signatureY + 15, 80, signatureY + 15); // Linie pentru semnătură stânga
+    doc.setFont("helvetica", "normal").setFontSize(9);
+    doc.text("Date: ____ / ____ / ________", 14, signatureY + 22);
+
+    doc.setFont("helvetica", "bold").setFontSize(10);
+    doc.text("Approved By (Production Manager):", 120, signatureY);
+    doc.line(120, signatureY + 15, 186, signatureY + 15); // Linie pentru semnătură dreapta
+    doc.setFont("helvetica", "normal").setFontSize(9);
+    doc.text("Date: ____ / ____ / ________", 120, signatureY + 22);
+
+    // Salvare Document
     doc.save(`Production_Downtime_Request_W${weekNumber}_${currentYear}.pdf`);
   }
+
   function renderFrequencyBadge(freqString: string, currentFilter: string) {
     const freqs = freqString ? freqString.split(", ") : [];
     if (freqs.length === 0)
@@ -534,6 +609,7 @@ export default function WeeklyMaintenancePage() {
       </div>
     );
   }
+
   return (
     <div className="p-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b pb-5">
@@ -625,7 +701,7 @@ export default function WeeklyMaintenancePage() {
           </button>
           <button
             onClick={sendToProduction}
-            className="bg-amber-50 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors"
+            className="bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors"
           >
             📧 Send To Production
           </button>
@@ -637,6 +713,7 @@ export default function WeeklyMaintenancePage() {
           </button>
         </div>
       </div>
+
       {loading ? (
         <p className="text-center py-12 text-slate-500 font-medium">
           Loading data...
@@ -645,10 +722,10 @@ export default function WeeklyMaintenancePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse table-fixed min-w-[800px]">
                 <thead>
                   <tr className="border-b bg-slate-100 text-slate-700 text-xs font-bold uppercase">
-                    <th className="py-3 px-4 w-12 text-center">
+                    <th className="py-3 px-4 w-[5%] shrink-0 text-center">
                       <input
                         type="checkbox"
                         onChange={(e) =>
@@ -656,13 +733,15 @@ export default function WeeklyMaintenancePage() {
                         }
                       />
                     </th>
-                    <th>Tool</th>
-                    <th>Equipment</th>
-                    <th>Tasks</th>
-                    <th>Frequency</th>
-                    <th>Duration</th>
-                    <th>Shift</th>
-                    <th>Day</th>
+                    <th className="w-[12%] px-2 shrink-0">Tool</th>
+                    <th className="w-[20%] px-2">Equipment</th>
+                    <th className="w-[8%] px-1 text-center shrink-0">Tasks</th>
+                    <th className="w-[11%] px-1 shrink-0">Frequency</th>
+                    <th className="w-[10%] px-1 text-center shrink-0">
+                      Duration
+                    </th>
+                    <th className="w-[16%] px-2 shrink-0">Shift</th>
+                    <th className="w-[18%] px-2 shrink-0">Day</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y text-sm text-slate-700">
@@ -691,7 +770,7 @@ export default function WeeklyMaintenancePage() {
                             : "hover:bg-slate-50"
                         }
                       >
-                        <td className="text-center">
+                        <td className="text-center py-3 shrink-0">
                           <input
                             type="checkbox"
                             checked={isAlreadyPlanned ? true : machine.selected}
@@ -701,20 +780,22 @@ export default function WeeklyMaintenancePage() {
                             }
                           />
                         </td>
-                        <td className="font-mono font-bold py-3 px-4">
+                        <td className="font-mono font-bold px-2 truncate shrink-0">
                           {machine.tool_number}
                         </td>
-                        <td>{machine.equipment}</td>
-                        <td className="text-center">
+                        <td className="px-2 truncate" title={machine.equipment}>
+                          {machine.equipment}
+                        </td>
+                        <td className="text-center px-1 shrink-0">
                           {machine.number_of_tasks}
                         </td>
-                        <td>
+                        <td className="px-1 shrink-0">
                           {renderFrequencyBadge(
                             machine.frequency,
                             frequencyFilter,
                           )}
                         </td>
-                        <td>
+                        <td className="px-1 shrink-0">
                           <input
                             type="number"
                             value={machine.duration_minutes}
@@ -725,17 +806,17 @@ export default function WeeklyMaintenancePage() {
                                 Number(e.target.value),
                               )
                             }
-                            className="w-full border rounded text-center bg-white"
+                            className="w-full border rounded text-center bg-white py-0.5 text-xs font-semibold"
                           />
                         </td>
-                        <td>
+                        <td className="px-2 shrink-0">
                           <select
                             value={planData?.shift || machine.shift}
                             disabled={isAlreadyPlanned}
                             onChange={(e) =>
                               handleShiftChange(index, e.target.value)
                             }
-                            className="w-full border rounded p-1 bg-white"
+                            className="w-full border rounded p-1 bg-white text-xs font-semibold"
                           >
                             {SHIFT_OPTIONS.map((s) => (
                               <option key={s} value={s}>
@@ -744,14 +825,14 @@ export default function WeeklyMaintenancePage() {
                             ))}
                           </select>
                         </td>
-                        <td>
+                        <td className="px-2 shrink-0">
                           <select
                             value={planData?.planned_day || machine.planned_day}
                             disabled={isAlreadyPlanned}
                             onChange={(e) =>
                               handleDayChange(index, e.target.value)
                             }
-                            className="w-full border rounded p-1 bg-white"
+                            className="w-full border rounded p-1 bg-white text-xs font-semibold"
                           >
                             {DAYS_OF_WEEK.map((d) => (
                               <option key={d} value={d}>

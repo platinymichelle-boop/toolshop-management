@@ -1,9 +1,12 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import { LanguageProvider } from "@/context/LanguageContext";
 import "./globals.css";
-// Importăm componenta pentru notificări push-up locale
 import { Toaster } from "react-hot-toast";
 import { cn } from "@/lib/utils";
 
@@ -19,16 +22,66 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Metal Stamping Maintenance",
-  description: "Sistem de management operational pentru service",
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const [isProductionUser, setIsProductionUser] = useState<boolean | null>(
+    null,
+  );
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    async function checkUserAccess() {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          setIsProductionUser(false);
+          setCheckingAuth(false);
+          return;
+        }
+
+        const { data: userData, error: dbError } = await supabase
+          .from("users")
+          .select("is_production_user")
+          .eq("id", user.id)
+          .single();
+
+        if (dbError || !userData) {
+          setIsProductionUser(false);
+        } else {
+          setIsProductionUser(!!userData.is_production_user);
+        }
+      } catch (err) {
+        console.error("Eroare la verificarea utilizatorului:", err);
+        setIsProductionUser(false);
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+
+    checkUserAccess();
+  }, []);
+
+  useEffect(() => {
+    if (checkingAuth || !isProductionUser) return;
+
+    const isWeeklyMaintenance = pathname === "/weekly-maintenance";
+    const isApprovalPage = pathname.startsWith("/approval/");
+
+    if (!isWeeklyMaintenance && !isApprovalPage) {
+      router.push("/weekly-maintenance");
+    }
+  }, [isProductionUser, pathname, checkingAuth, router]);
+
   return (
     <html
       lang="ro"
@@ -42,7 +95,6 @@ export default function RootLayout({
       )}
     >
       <head>
-        {/* Optimizări native pentru viewport adaptiv și ecrane mobile */}
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1.0, maximum-scale=5.0"
@@ -55,29 +107,32 @@ export default function RootLayout({
           content="black-translucent"
         />
       </head>
-      {/* 
-        [MODIFICARE FIZICĂ ECOSYSTEM MOBIL]
-        - Înlocuit h-screen/w-screen rigid cu min-h-screen și w-full pentru scalare flexibilă.
-        - Eliminat overflow-hidden global de pe body pentru a permite gesturile native ale sistemului de operare.
-      */}
       <body className="min-h-screen w-full flex bg-gray-50 text-slate-900 overflow-x-hidden antialiased">
-        {/* Containerul global pentru ferestrele pop-up de interfață */}
         <Toaster position="top-right" reverseOrder={false} />
 
-        {/* Providerul de limbă global în jurul întregii structuri */}
         <LanguageProvider>
-          {/* Sidebar-ul fix în stânga */}
-          <Sidebar />
+          {checkingAuth ? (
+            /* Structura de încărcare este mutată în interiorul body-ului nativ deja randat */
+            <div className="flex-1 flex items-center justify-center bg-gray-50 text-slate-500 text-sm font-semibold min-h-screen w-full">
+              Se încarcă configurația...
+            </div>
+          ) : (
+            <>
+              {/* Afișare condiționată Sidebar */}
+              {!isProductionUser && <Sidebar />}
 
-          {/* 
-            [MODIFICARE ANTIDOT TĂIERE DREAPTA]
-            - Schimbat p-8 fix (excesiv pe mobil) în p-4 pe ecrane mici și md:p-8 pe desktop.
-            - Înlocuit h-full rigid cu flex-1 pentru a lăsa conținutul să respire pe verticală.
-            - Adăugat w-full și min-w-0 pentru a forța tabelele interne (flex-item) să recunoască marginile ecranului și să își activeze propriul scroll orizontal.
-          */}
-          <main className="flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto">
-            {children}
-          </main>
+              {/* Ajustare dinamică Main Layout */}
+              <main
+                className={
+                  isProductionUser
+                    ? "w-full p-0 flex-1 min-w-0 min-h-screen bg-slate-50"
+                    : "flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto"
+                }
+              >
+                {children}
+              </main>
+            </>
+          )}
         </LanguageProvider>
       </body>
     </html>
