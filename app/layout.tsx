@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import { LanguageProvider } from "@/context/LanguageContext";
@@ -30,47 +29,11 @@ export default function RootLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  const [isProductionUser, setIsProductionUser] = useState<boolean | null>(
-    null,
-  );
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  // 1. Setări temporare hardcoded pentru testare
+  const [isProductionUser, setIsProductionUser] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(false);
 
-  useEffect(() => {
-    async function checkUserAccess() {
-      try {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError || !user) {
-          setIsProductionUser(false);
-          setCheckingAuth(false);
-          return;
-        }
-
-        const { data: userData, error: dbError } = await supabase
-          .from("users")
-          .select("is_production_user")
-          .eq("id", user.id)
-          .single();
-
-        if (dbError || !userData) {
-          setIsProductionUser(false);
-        } else {
-          setIsProductionUser(!!userData.is_production_user);
-        }
-      } catch (err) {
-        console.error("Eroare la verificarea utilizatorului:", err);
-        setIsProductionUser(false);
-      } finally {
-        setCheckingAuth(false);
-      }
-    }
-
-    checkUserAccess();
-  }, []);
-
+  // 2. Păstrăm doar logica de redirecționare automată pentru rute
   useEffect(() => {
     if (checkingAuth || !isProductionUser) return;
 
@@ -112,20 +75,19 @@ export default function RootLayout({
 
         <LanguageProvider>
           {checkingAuth ? (
-            /* Structura de încărcare este mutată în interiorul body-ului nativ deja randat */
             <div className="flex-1 flex items-center justify-center bg-gray-50 text-slate-500 text-sm font-semibold min-h-screen w-full">
               Se încarcă configurația...
             </div>
           ) : (
             <>
-              {/* Afișare condiționată Sidebar */}
+              {/* 3. Ascundere Sidebar bazată pe starea hardcoded */}
               {!isProductionUser && <Sidebar />}
 
-              {/* Ajustare dinamică Main Layout */}
+              {/* 4. Ajustare Main Layout pe toată lățimea ecranului */}
               <main
                 className={
                   isProductionUser
-                    ? "w-full p-0 flex-1 min-w-0 min-h-screen bg-slate-50"
+                    ? "w-full p-0 flex-1 min-h-screen bg-slate-50"
                     : "flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto"
                 }
               >
