@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState,} from "react";
 import { supabase } from "@/lib/supabase";
 
-interface PageProps {
-  searchParams: Promise<{ number?: string }>;
-}
+import { useSearchParams } from "next/navigation";
 
-export default function ToolPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = use(searchParams);
-  const cleanToolNumber = (resolvedSearchParams.number || "").trim();
+export default function ToolPage() {
+  const searchParams = useSearchParams();
+
+  const cleanToolNumber = searchParams.get("number")?.trim() || "";
 
   const [isLoading, setIsLoading] = useState(true);
   const [tool, setTool] = useState<any>(null);
