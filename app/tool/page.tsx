@@ -811,8 +811,9 @@ export default function ToolPage({ searchParams }: PageProps) {
                                 const searchQuery = encodeURIComponent(
                                   `${part.manufacturer || ""} ${part.part_number || ""} ${part.specification || ""}`,
                                 );
+
                                 window.open(
-                                  `https://google.com{searchQuery}`,
+                                  `https://www.google.com/search?q=${searchQuery}`,
                                   "_blank",
                                   "noopener,noreferrer",
                                 );
