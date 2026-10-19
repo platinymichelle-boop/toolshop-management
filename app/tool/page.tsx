@@ -2,18 +2,6 @@
 
 import { useEffect, useState, use } from "react";
 import { supabase } from "@/lib/supabase";
-import * as XLSX from "xlsx";
-
-// 1. Adaugă acest obiect sub liniile de import din fișierul tău original
-const machineConfig: Record<
-  string,
-  { structureImport: boolean; sparePartsImport: boolean }
-> = {
-  FAGOR: { structureImport: true, sparePartsImport: true },
-  ALESPRES: { structureImport: true, sparePartsImport: true },
-  PRESIX: { structureImport: true, sparePartsImport: true },
-  YADON: { structureImport: true, sparePartsImport: true },
-};
 
 interface PageProps {
   searchParams: Promise<{ number?: string }>;
@@ -30,13 +18,16 @@ export default function ToolPage({ searchParams }: PageProps) {
   const [repairHistory, setRepairHistory] = useState<any[]>([]);
   const [isUpdatingStock, setIsUpdatingStock] = useState<number | null>(null);
 
-  // Stări Equipment Tree
+  // Stare nouă pentru motorul de căutare piese în timp real
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Stări Equipment Tree (Structură Utilaj)
   const [currentNode, setCurrentNode] = useState<any>(null);
   const [currentLevelNodes, setCurrentLevelNodes] = useState<any[]>([]);
   const [breadcrumb, setBreadcrumb] = useState<any[]>([]);
   const [isTreeLoading, setIsTreeLoading] = useState(false);
 
-  // Stări Modale Administrare Arbore
+  // Stări Modale Administrare Arbore Structură
   const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
@@ -45,30 +36,33 @@ export default function ToolPage({ searchParams }: PageProps) {
   const [parentId, setParentId] = useState<number | null>(null);
   const [sortOrder, setSortOrder] = useState(0);
 
-  // Stări Gestiune Piese de Schimb și Seeders
-  const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
-  const [allUnassignedParts, setAllUnassignedParts] = useState<any[]>([]);
-  const [isAttachingPart, setIsAttachingPart] = useState<number | null>(null);
+  // Stări Gestiune Seeders Structură Echipamente
   const [isSeeding, setIsSeeding] = useState(false);
-
-  // Stări Import Excel Fagor Structură
-  const [isImportingExcel, setIsImportingExcel] = useState(false);
-  const [isImportingSpareParts, setIsImportingSpareParts] = useState(false);
 
   const allowedNodeTypes = (() => {
     if (breadcrumb.length === 0) return ["PRESS", "TRANSFER", "LOADER"];
-    if (breadcrumb.length === 1)
+    if (breadcrumb.length === 1) {
+      if (cleanToolNumber.toUpperCase().startsWith("APR-")) {
+        return [
+          "Mechanical",
+          "Electrical",
+          "Hydraulic",
+          "Nut Feeder",
+          "Consumables",
+        ];
+      }
       return ["Electrical", "Mechanical", "Hydraulic", "Pneumatic"];
+    }
     if (breadcrumb.length === 2) return ["Assemblies"];
     return ["Assemblies", "Subcomponent"];
   })();
+
   async function loadLiveToolData() {
     if (!cleanToolNumber) return;
     try {
       setIsLoading(true);
       const searchPattern = `%${cleanToolNumber}%`;
 
-      // Încarcă toate datele (inclusiv tool_number, manufacturer, machine_type datorită select("*"))
       const toolRes = await supabase
         .from("tools")
         .select("*")
@@ -81,7 +75,6 @@ export default function ToolPage({ searchParams }: PageProps) {
         .ilike("tool_number", searchPattern)
         .not("status", "ilike", "closed")
         .order("id", { ascending: false });
-
       const historyRes = await supabase
         .from("repairs")
         .select("*")
@@ -96,12 +89,13 @@ export default function ToolPage({ searchParams }: PageProps) {
       }
       setRepairHistory(historyRes.data || []);
 
-      // 8. Resetăm stările arborelui la rădăcină la fiecare schimbare de utilaj pentru navigare sigură
       setCurrentNode(null);
       setBreadcrumb([]);
       await refreshCurrentTreeLevel(null, []);
-    } catch (error) {
-      console.error("Eroare la încărcarea fișei tehnice:", error);
+    } catch (error: any) {
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
     } finally {
       setIsLoading(false);
     }
@@ -117,6 +111,8 @@ export default function ToolPage({ searchParams }: PageProps) {
   ) {
     try {
       setIsTreeLoading(true);
+      setSearchTerm(""); // Resetăm termenul la comutarea categoriilor
+
       if (!targetNode) {
         const nodesRes = await supabase
           .from("equipment_nodes")
@@ -127,467 +123,105 @@ export default function ToolPage({ searchParams }: PageProps) {
         setCurrentLevelNodes(nodesRes.data || []);
         setParts([]);
       } else {
-        const childrenRes = await supabase
-          .from("equipment_nodes")
-          .select("*")
-          .eq("tool_number", cleanToolNumber)
-          .eq("parent_id", targetNode.id)
-          .order("sort_order");
+        const nodeNameUpper = String(targetNode.node_name || "").toUpperCase();
+        const validCategories = [
+          "MECHANICAL",
+          "ELECTRICAL",
+          "HYDRAULIC",
+          "NUT FEEDER",
+          "CONSUMABLES",
+        ];
 
-        setCurrentLevelNodes(childrenRes.data || []);
-
-        if (!childrenRes.data || childrenRes.data.length === 0) {
+        if (validCategories.includes(nodeNameUpper)) {
           const partsRes = await supabase
             .from("spare_parts")
             .select("*")
-            .eq("equipment_node_id", targetNode.id)
+            .eq("tool_number", cleanToolNumber)
+            .eq("import_category", nodeNameUpper)
             .order("endr_code", { ascending: true });
+
+          console.log("NODE:", nodeNameUpper);
+          console.log("TOOL:", cleanToolNumber);
+          console.log("ROWS:", partsRes.data?.length);
+          console.log("ERROR:", partsRes.error);
+
           setParts(partsRes.data || []);
+          setCurrentLevelNodes([]);
         } else {
+          const childrenRes = await supabase
+            .from("equipment_nodes")
+            .select("*")
+            .eq("tool_number", cleanToolNumber)
+            .eq("parent_id", targetNode.id)
+            .order("sort_order");
+
+          setCurrentLevelNodes(childrenRes.data || []);
           setParts([]);
         }
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error: any) {
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
     } finally {
       setIsTreeLoading(false);
     }
   }
 
-  async function handleExcelStructureImport(
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) {
-    const file = e.target.files?.[0];
-    if (!file || !currentNode || !tool) return;
-
-    // 1 & 6. Validare dinamică bazată pe stratul de configurare a producătorilor
-    const currentMfgKey = String(tool.manufacturer || "").toUpperCase();
-    const currentMfgConfig = machineConfig[currentMfgKey];
-
-    if (!currentMfgConfig || !currentMfgConfig.structureImport) {
-      alert(
-        `Importul de structură nu este activat sau configurat pentru producătorul: ${tool.manufacturer || "Necunoscut"}`,
-      );
-      return;
-    }
-
-    // Mapare directă bazată pe noile denumiri ale disciplinelor root
-    const sheetMap: Record<string, string> = {
-      MECHANICAL: "Mechanic",
-      ELECTRICAL: "Electric",
-      HYDRAULIC: "Hydraulic",
-    };
-
-    const targetSheetName = sheetMap[currentNode.node_name.toUpperCase()];
-    if (!targetSheetName) {
-      alert(
-        "Nodul selectat nu este o disciplină validă pentru import (Trebuie să fie ELECTRICAL, HYDRAULIC sau MECHANICAL).",
-      );
-      return;
-    }
-
-    try {
-      setIsImportingExcel(true);
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-
-      let totalImported = 0;
-      let totalSkipped = 0;
-
-      const sheet = workbook.Sheets[targetSheetName];
-      if (!sheet) {
-        alert(
-          `Sheet-ul "${targetSheetName}" nu a fost găsit în fișierul Excel.`,
-        );
-        return;
-      }
-
-      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      const detectedAssemblies: string[] = [];
-
-      // Identificăm dinamic indecșii coloanelor solicitate din antet
-      let codeIdx = -1;
-      let denominationIdx = -1;
-      let manufacturerIdx = -1;
-
-      for (let i = 0; i < Math.min(rows.length, 20); i++) {
-        const row = rows[i];
-        if (!row) continue;
-
-        row.forEach((cell, idx) => {
-          const val = String(cell || "")
-            .trim()
-            .toLowerCase();
-          if (val === "code") codeIdx = idx;
-          if (val === "denomination") denominationIdx = idx;
-          if (val === "manufacturer") manufacturerIdx = idx;
-        });
-
-        if (
-          codeIdx !== -1 &&
-          denominationIdx !== -1 &&
-          manufacturerIdx !== -1
-        ) {
-          break;
-        }
-      }
-
-      if (codeIdx === -1 || denominationIdx === -1 || manufacturerIdx === -1) {
-        alert(
-          "Nu s-au putut identifica toate coloanele necesare (Code, Denomination, Manufacturer) în acest sheet.",
-        );
-        return;
-      }
-
-      // 2. Parcurgem rândurile pentru a extrage toate ansamblurile direct
-      for (const row of rows) {
-        if (
-          !row ||
-          row.length <= Math.max(codeIdx, denominationIdx, manufacturerIdx)
-        )
-          continue;
-
-        const codeValue = String(row[codeIdx] || "").trim();
-        const denominationValue = String(row[denominationIdx] || "").trim();
-        const manufacturerValue = String(row[manufacturerIdx] || "").trim();
-
-        // Ignorăm rândul de antet în sine
-        if (denominationValue.toLowerCase() === "denomination") continue;
-
-        // Adăugat în consolă pentru debugging conform cerinței
-        console.log(codeValue, denominationValue, manufacturerValue);
-
-        // 3 & 4. Condiție flexibilă: producătorul rândului curent din fișier trebuie să coincidă cu producătorul utilajului curent (ex: FAGOR, ALESPRES, PRESIX etc.)
-        if (
-          codeValue !== "" &&
-          denominationValue !== "" &&
-          manufacturerValue
-            .toLowerCase()
-            .includes(tool.manufacturer.toLowerCase().trim())
-        ) {
-          detectedAssemblies.push(denominationValue);
-        }
-      }
-
-      // 4. Eliminarea duplicatelor conform cerinței
-      const uniqueAssemblies = [...new Set(detectedAssemblies)];
-
-      // 5. Consola de debug
-      console.log(
-        `Detected Assemblies for ${currentNode.node_name}:`,
-        uniqueAssemblies,
-      );
-
-      if (uniqueAssemblies.length > 0) {
-        const { data: existingAssemblies, error: asmFetchError } =
-          await supabase
-            .from("equipment_nodes")
-            .select("node_name")
-            .eq("tool_number", cleanToolNumber)
-            .eq("parent_id", currentNode.id);
-
-        if (asmFetchError) throw asmFetchError;
-        const existingSet = new Set(
-          existingAssemblies?.map((a) => a.node_name) || [],
-        );
-
-        // 7. Relațiile folosesc în continuare strict tool_number și parent_id (equipment_node_id)
-        const insertPayload = uniqueAssemblies
-          .filter((name) => !existingSet.has(name))
-          .map((name, idx) => ({
-            tool_number: cleanToolNumber,
-            parent_id: currentNode.id,
-            node_name: name,
-            node_type: "Assemblies",
-            sort_order: (existingSet.size + idx + 1) * 10,
-          }));
-
-        if (insertPayload.length > 0) {
-          const { error: insertError } = await supabase
-            .from("equipment_nodes")
-            .insert(insertPayload);
-          if (insertError) throw insertError;
-          totalImported += insertPayload.length;
-        }
-        totalSkipped += uniqueAssemblies.length - insertPayload.length;
-      }
-
-      alert(
-        `Assembly Structure Generated Successfully under ${currentNode.node_name}.\nImported Assemblies: ${totalImported}\nSkipped: ${totalSkipped}`,
-      );
-      await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (err: any) {
-      alert("Eroare la procesarea structurii Excel: " + err.message);
-    } finally {
-      setIsImportingExcel(false);
-      e.target.value = "";
-    }
-  }
-
-  async function handleSparePartsImport(
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) {
-    const file = e.target.files?.[0];
-    if (!file || !currentNode || !tool) return;
-
-    // 1 & 6. Validare dinamică bazată pe stratul de configurare a producătorilor
-    const currentMfgKey = String(tool.manufacturer || "").toUpperCase();
-    const currentMfgConfig = machineConfig[currentMfgKey];
-
-    if (!currentMfgConfig || !currentMfgConfig.sparePartsImport) {
-      alert(
-        `Importul de piese de schimb nu este activat sau configurat pentru producătorul: ${tool.manufacturer || "Necunoscut"}`,
-      );
-      return;
-    }
-
-    // 1. Determină disciplina părinte din breadcrumb pentru a alege sheet-ul corect
-    const breadcrumbNames = (breadcrumb || []).map((b) =>
-      typeof b === "string"
-        ? b.toUpperCase()
-        : String(b?.node_name || b?.name || "").toUpperCase(),
+  // Filtrare locală multi-metodă instantanee (Case Insensitive)
+  const filteredParts = parts.filter((part) => {
+    if (!searchTerm.trim()) return true;
+    const normSearch = searchTerm.toLowerCase();
+    return (
+      String(part.endr_code || "")
+        .toLowerCase()
+        .includes(normSearch) ||
+      String(part.specification || "")
+        .toLowerCase()
+        .includes(normSearch) ||
+      String(part.manufacturer || "")
+        .toLowerCase()
+        .includes(normSearch) ||
+      String(part.part_number || "")
+        .toLowerCase()
+        .includes(normSearch)
     );
-
-    const isElectrical = breadcrumbNames.includes("ELECTRICAL");
-    const isHydraulic = breadcrumbNames.includes("HYDRAULIC");
-    const isMechanical = breadcrumbNames.includes("MECHANICAL");
-
-    let targetSheetName = "";
-    if (isElectrical) targetSheetName = "Electric";
-    else if (isHydraulic) targetSheetName = "Hydraulic";
-    else if (isMechanical) targetSheetName = "Mechanic";
-
-    if (!targetSheetName) {
-      alert(
-        "Nu s-a putut determina disciplina părinte (ELECTRICAL, HYDRAULIC, MECHANICAL) din breadcrumb.",
-      );
-      return;
-    }
-
-    try {
-      setIsImportingSpareParts(true); // Folosește state-ul dedicat definit în componentă
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-
-      const sheet = workbook.Sheets[targetSheetName];
-      if (!sheet) {
-        alert(
-          `Sheet-ul "${targetSheetName}" nu a fost găsit în fișierul Excel.`,
-        );
-        return;
-      }
-
-      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-      // 2. Identificare dinamică coloane
-      let codeIdx = -1;
-      let denominationIdx = -1;
-      let manufacturerIdx = -1;
-      let quantityIdx = -1;
-      // Adaugă potriviri suplimentare dacă ai coloane specifice în tabel pentru endr_code, priority, etc.
-      let endrIdx = -1;
-
-      for (let i = 0; i < Math.min(rows.length, 20); i++) {
-        const row = rows[i];
-        if (!row) continue;
-        row.forEach((cell, idx) => {
-          const val = String(cell || "")
-            .trim()
-            .toLowerCase();
-          if (val === "code") codeIdx = idx;
-          if (val === "denomination") denominationIdx = idx;
-          if (val === "manufacturer") manufacturerIdx = idx;
-          if (val === "quantity" || val === "qty") quantityIdx = idx;
-          if (val === "endr code" || val === "endr_code") endrIdx = idx;
-        });
-        if (codeIdx !== -1 && denominationIdx !== -1 && manufacturerIdx !== -1)
-          break;
-      }
-
-      if (codeIdx === -1 || denominationIdx === -1 || manufacturerIdx === -1) {
-        alert(
-          "Nu s-au putut identifica coloanele obligatorii (Code, Denomination, Manufacturer).",
-        );
-        return;
-      }
-      let isWithinTargetAssembly = false;
-      const targetPartsPayload: any[] = [];
-
-      // 3. Parcurgerea liniară a rândurilor
-      for (const row of rows) {
-        if (
-          !row ||
-          row.length <= Math.max(codeIdx, denominationIdx, manufacturerIdx)
-        )
-          continue;
-
-        const codeValue = String(row[codeIdx] || "").trim();
-        const denominationValue = String(row[denominationIdx] || "").trim();
-        const manufacturerValue = String(row[manufacturerIdx] || "").trim();
-        const qtyValue =
-          quantityIdx !== -1
-            ? parseInt(String(row[quantityIdx] || "1").trim(), 10) || 1
-            : 1;
-        const endrValue =
-          endrIdx !== -1 ? String(row[endrIdx] || "").trim() : "";
-
-        if (denominationValue.toLowerCase() === "denomination") continue;
-
-        // 3. Verificăm dinamic dacă rândul definește o grupare de tip Assembly pe baza producătorului mașinii curente
-        const isAssemblyRow =
-          codeValue !== "" &&
-          denominationValue !== "" &&
-          manufacturerValue
-            .toLowerCase()
-            .includes(tool.manufacturer.toLowerCase().trim());
-
-        if (isAssemblyRow) {
-          if (isWithinTargetAssembly) {
-            // 5. Am ajuns la următorul Assembly -> Oprim citirea imediat
-            break;
-          }
-
-          // 4. Căutăm punctul de pornire (Assembly-ul curent selectat în UI)
-          if (
-            denominationValue.toUpperCase() ===
-            currentNode.node_name.toUpperCase()
-          ) {
-            isWithinTargetAssembly = true;
-            continue; // Trecem la rândul următor unde încep piesele
-          }
-        }
-
-        // 6. Dacă suntem în interiorul secțiunii corecte, colectăm rândurile (care reprezintă piese/spare parts)
-        if (isWithinTargetAssembly) {
-          // Ignorăm rândurile goale sau invalide din interiorul grupului
-          if (!codeValue && !denominationValue) continue;
-
-          // 7. Relațiile folosesc în continuare strict tool_number și equipment_node_id
-          targetPartsPayload.push({
-            tool_number: cleanToolNumber,
-            equipment_node_id: currentNode.id,
-            part_number: codeValue || denominationValue, // fallback pe nume dacă lipsește codul piesei
-            specification: denominationValue,
-            manufacturer: manufacturerValue || "Unknown",
-            endr_code: endrValue,
-            priority: "Medium", // Valoare implicită standard
-            quantity: qtyValue,
-          });
-        }
-      }
-      // 7. Sincronizare cu baza de date (Evitare duplicate folosind cheia equipment_node_id + part_number)
-      let imported = 0;
-      let updated = 0;
-      let skipped = 0;
-
-      if (targetPartsPayload.length === 0) {
-        alert(
-          `Nu s-au găsit piese de schimb sub ansamblul "${currentNode.node_name}" în fișierul Excel.`,
-        );
-        setIsImportingSpareParts(false);
-        return;
-      }
-
-      // Preluăm piesele existente deja sub acest nod pentru verificare/update în memorie
-      const { data: existingParts, error: fetchErr } = await supabase
-        .from("spare_parts")
-        .select("id, part_number")
-        .eq("equipment_node_id", currentNode.id);
-
-      if (fetchErr) throw fetchErr;
-
-      const existingPartsMap = new Map(
-        existingParts?.map((p) => [p.part_number, p.id]) || [],
-      );
-
-      for (const part of targetPartsPayload) {
-        const existingId = existingPartsMap.get(part.part_number);
-
-        if (existingId) {
-          // 9. Actualizare în cazul în care există deja
-          const { error: updateErr } = await supabase
-            .from("spare_parts")
-            .update({
-              specification: part.specification,
-              manufacturer: part.manufacturer,
-              quantity: part.quantity,
-              endr_code: part.endr_code,
-            })
-            .eq("id", existingId);
-
-          if (updateErr) {
-            skipped++;
-          } else {
-            updated++;
-          }
-        } else {
-          // 9. Inserare piesă nouă
-          const { error: insertErr } = await supabase
-            .from("spare_parts")
-            .insert([part]);
-
-          if (insertErr) {
-            skipped++;
-          } else {
-            imported++;
-          }
-        }
-      }
-
-      // 9. Afișare raport final
-      alert(
-        `Import Spare Parts finalizat pentru ${currentNode.node_name}:\n\n` +
-          `✅ Imported (Noi): ${imported}\n` +
-          `🔄 Updated (Modificate): ${updated}\n` +
-          `❌ Skipped (Erori): ${skipped}`,
-      );
-
-      // Refresh pe panoul curent pentru a verifica alocarea pieselor
-      await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (err: any) {
-      alert("Eroare la importul pieselor de schimb: " + err.message);
-    } finally {
-      setIsImportingSpareParts(false);
-      e.target.value = "";
-    }
-  }
+  });
 
   async function handleDeleteAllChildren() {
     if (!currentNode) return;
-
-    const confirmDelete = window.confirm(
-      "Are you sure you want to delete all assemblies under this node?",
-    );
-    if (!confirmDelete) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to delete all structural subassemblies under this node?",
+      )
+    )
+      return;
 
     try {
-      // Șterge toate nodurile copil care au parent_id egal cu ID-ul nodului curent
       const { error } = await supabase
         .from("equipment_nodes")
         .delete()
         .eq("parent_id", currentNode.id);
 
       if (error) throw error;
-
-      alert("All children nodes have been deleted successfully.");
-
-      // Refresh automat al nivelului curent din arbore
+      alert("All structural children nodes have been deleted successfully.");
       await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (err: any) {
-      alert("Eroare la ștergerea nodurilor copil: " + err.message);
+    } catch (error: any) {
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
+      alert("Eroare la ștergerea nodurilor structurale: " + error.message);
     }
   }
-
   async function handleGenerateStandardStructure() {
     if (
       !confirm(
-        "Sigur doriți să generați structura standard (ELECTRICAL, HYDRAULIC, MECHANICAL) pentru acest utilaj?",
+        "Sigur doriți să generați structura standard pentru acest utilaj?",
       )
     )
       return;
     try {
       setIsSeeding(true);
-
       const { data: rootCheck, error: checkError } = await supabase
         .from("equipment_nodes")
         .select("id")
@@ -595,20 +229,33 @@ export default function ToolPage({ searchParams }: PageProps) {
         .is("parent_id", null);
 
       if (checkError) throw checkError;
-
       if (rootCheck && rootCheck.length > 0) {
         alert(
-          "Eroare: Există deja noduri rădăcină (root) configurate pentru acest utilaj.",
+          "Eroare: Există deja noduri rădărnă configurate pentru acest utilaj.",
         );
         return;
       }
 
-      // Noua structură cu disciplinele direct ca noduri principale (root)
-      const standardDisciplines = [
-        { node_name: "ELECTRICAL", node_type: "Electrical", sort_order: 10 },
-        { node_name: "HYDRAULIC", node_type: "Hydraulic", sort_order: 20 },
-        { node_name: "MECHANICAL", node_type: "Mechanical", sort_order: 30 },
-      ];
+      let standardDisciplines = [];
+      if (cleanToolNumber.toUpperCase().startsWith("APR-")) {
+        standardDisciplines = [
+          { node_name: "MECHANICAL", node_type: "Mechanical", sort_order: 10 },
+          { node_name: "ELECTRICAL", node_type: "Electrical", sort_order: 20 },
+          { node_name: "HYDRAULIC", node_type: "Hydraulic", sort_order: 30 },
+          { node_name: "NUT FEEDER", node_type: "Nut Feeder", sort_order: 40 },
+          {
+            node_name: "CONSUMABLES",
+            node_type: "Consumables",
+            sort_order: 50,
+          },
+        ];
+      } else {
+        standardDisciplines = [
+          { node_name: "ELECTRICAL", node_type: "Electrical", sort_order: 10 },
+          { node_name: "HYDRAULIC", node_type: "Hydraulic", sort_order: 20 },
+          { node_name: "MECHANICAL", node_type: "Mechanical", sort_order: 30 },
+        ];
+      }
 
       const insertPayload = standardDisciplines.map((d) => ({
         tool_number: cleanToolNumber,
@@ -621,18 +268,18 @@ export default function ToolPage({ searchParams }: PageProps) {
       const { error: insertError } = await supabase
         .from("equipment_nodes")
         .insert(insertPayload);
-
       if (insertError) throw insertError;
-
       alert("Standard Equipment Structure Generated");
       await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (err: any) {
-      alert("Eroare la generarea structurii: " + err.message);
+    } catch (error: any) {
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
+      alert("Eroare la generarea structurii: " + error.message);
     } finally {
       setIsSeeding(false);
     }
   }
-
   async function handleGenerateAssemblyStructure() {
     if (!currentNode || breadcrumb.length !== 2) return;
     const parentModule = breadcrumb[breadcrumb.length - 2]?.node_name;
@@ -646,10 +293,11 @@ export default function ToolPage({ searchParams }: PageProps) {
     }
 
     if (
-      !confirm(`Generați subansamblele standard pentru PRESS > ${systemType}?`)
+      !confirm(
+        `Generați subansamblele structurale standard pentru PRESS > ${systemType}?`,
+      )
     )
       return;
-
     let assembliesToCreate: string[] = [];
 
     if (systemType === "Electrical") {
@@ -717,15 +365,17 @@ export default function ToolPage({ searchParams }: PageProps) {
         if (insertError) throw insertError;
       }
 
-      alert("Assembly Structure Generated Successfully.");
+      alert("Structural Assembly Generated Successfully.");
       await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (err: any) {
-      alert("Eroare la generarea subansamblelor: " + err.message);
+    } catch (error: any) {
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
+      alert("Eroare la generarea subansamblelor: " + error.message);
     } finally {
       setIsSeeding(false);
     }
   }
-
   async function handleNodeClick(node: any) {
     const newBreadcrumb = [...breadcrumb, node];
     setBreadcrumb(newBreadcrumb);
@@ -746,6 +396,7 @@ export default function ToolPage({ searchParams }: PageProps) {
       await refreshCurrentTreeLevel(targetNode, newBreadcrumb);
     }
   }
+
   function openCreateModal() {
     setModalMode("create");
     setEditingNodeId(null);
@@ -795,15 +446,17 @@ export default function ToolPage({ searchParams }: PageProps) {
       setIsNodeModalOpen(false);
       await refreshCurrentTreeLevel(currentNode, breadcrumb);
     } catch (error: any) {
-      alert("Eroare la salvarea nodului: " + error.message);
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
+      alert("Eroare la salvarea nodului structural: " + error.message);
     }
   }
-
   async function handleDeleteNode(nodeId: number, e: React.MouseEvent) {
     e.stopPropagation();
     if (
       !confirm(
-        "Sigur doriți să ștergeți acest nod și toate subansamblele sale?",
+        "Sigur doriți să ștergeți acest nod structural și subansamblele sale?",
       )
     )
       return;
@@ -820,58 +473,10 @@ export default function ToolPage({ searchParams }: PageProps) {
         await refreshCurrentTreeLevel(currentNode, breadcrumb);
       }
     } catch (error: any) {
-      alert("Eroare la ștergerea nodului: " + error.message);
-    }
-  }
-
-  async function openAttachModal() {
-    if (!currentNode) return;
-    try {
-      const { data, error } = await supabase
-        .from("spare_parts")
-        .select("*")
-        .ilike("tool_number", `%${cleanToolNumber}%`)
-        .or(`equipment_node_id.is.null,equipment_node_id.neq.${currentNode.id}`)
-        .order("endr_code", { ascending: true });
-      if (error) throw error;
-      setAllUnassignedParts(data || []);
-      setIsAttachModalOpen(true);
-    } catch (error: any) {
-      alert("Eroare la încărcarea pieselor: " + error.message);
-    }
-  }
-
-  async function handleAttachPart(partId: number) {
-    if (!currentNode) return;
-    try {
-      setIsAttachingPart(partId);
-      const { error } = await supabase
-        .from("spare_parts")
-        .update({ equipment_node_id: currentNode.id })
-        .eq("id", partId);
-      if (error) throw error;
-
-      setIsAttachModalOpen(false);
-      await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (error: any) {
-      alert("Eroare la atașarea piesei: " + error.message);
-    } finally {
-      setIsAttachingPart(null);
-    }
-  }
-
-  async function handleRemovePartFromNode(partId: number) {
-    if (!confirm("Sigur doriți să detașați piesa de pe acest nod industrial?"))
-      return;
-    try {
-      const { error } = await supabase
-        .from("spare_parts")
-        .update({ equipment_node_id: null })
-        .eq("id", partId);
-      if (error) throw error;
-      await refreshCurrentTreeLevel(currentNode, breadcrumb);
-    } catch (error: any) {
-      alert("Eroare la detașarea piesei: " + error.message);
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
+      alert("Eroare la ștergerea nodului structural: " + error.message);
     }
   }
 
@@ -895,6 +500,9 @@ export default function ToolPage({ searchParams }: PageProps) {
         ),
       );
     } catch (error: any) {
+      console.error("FULL ERROR:", error);
+      console.error("MESSAGE:", error?.message);
+      console.error("STACK:", error?.stack);
       alert("Eroare la actualizarea stocului: " + error.message);
     } finally {
       setIsUpdatingStock(null);
@@ -920,7 +528,6 @@ export default function ToolPage({ searchParams }: PageProps) {
           : "bg-amber-50 text-amber-700 border-amber-200";
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
-      {/* Header */}
       <div className="flex justify-between items-center border-b border-slate-100 pb-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">
@@ -937,7 +544,6 @@ export default function ToolPage({ searchParams }: PageProps) {
         </span>
       </div>
 
-      {/* Indicatori */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-sm flex items-center justify-between">
           <div>
@@ -946,7 +552,7 @@ export default function ToolPage({ searchParams }: PageProps) {
             </p>
             <p className="text-lg font-black text-slate-800 mt-1">
               {tool?.kardex_shelf
-                ? `ENDR Warehouse Kashif  ${tool.kardex_shelf}`
+                ? `ENDR Warehouse Kashif ${tool.kardex_shelf}`
                 : "Nalocat"}
             </p>
           </div>
@@ -965,7 +571,6 @@ export default function ToolPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {/* Equipment Tree Structure Panel */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -978,57 +583,14 @@ export default function ToolPage({ searchParams }: PageProps) {
           </div>
           <div className="flex items-center flex-wrap gap-2">
             {currentNode &&
-              ["MECHANICAL", "ELECTRICAL", "HYDRAULIC"].includes(
-                currentNode.node_name,
-              ) && (
-                <div className="flex items-center gap-2">
-                  <label
-                    htmlFor="excel-structure-import"
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
-                  >
-                    📥{" "}
-                    {isImportingExcel
-                      ? "Importing..."
-                      : "Import Excel Structure"}
-                  </label>
-                  <input
-                    id="excel-structure-import"
-                    type="file"
-                    accept=".xlsx, .xls"
-                    className="hidden"
-                    onChange={handleExcelStructureImport}
-                    disabled={isImportingExcel}
-                  />
-                </div>
-              )}
-            {currentNode &&
-              !["MECHANICAL", "ELECTRICAL", "HYDRAULIC"].includes(
-                currentNode.node_name,
-              ) && (
-                <label
-                  htmlFor="spare-parts-import"
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
-                >
-                  📦{" "}
-                  {isImportingSpareParts
-                    ? "Importing..."
-                    : "Import Spare Parts"}
-                  <input
-                    id="spare-parts-import"
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={handleSparePartsImport}
-                    disabled={isImportingSpareParts}
-                  />
-                </label>
-              )}
-
-            {currentNode &&
               currentLevelNodes.length === 0 &&
-              !["MECHANICAL", "ELECTRICAL", "HYDRAULIC"].includes(
-                currentNode.node_name,
-              ) && (
+              ![
+                "MECHANICAL",
+                "ELECTRICAL",
+                "HYDRAULIC",
+                "NUT FEEDER",
+                "CONSUMABLES",
+              ].includes(String(currentNode.node_name).toUpperCase()) && (
                 <button
                   onClick={handleGenerateStandardStructure}
                   disabled={isSeeding}
@@ -1066,7 +628,6 @@ export default function ToolPage({ searchParams }: PageProps) {
                 ← Înapoi
               </button>
             )}
-
             {currentNode &&
               currentLevelNodes &&
               currentLevelNodes.length > 0 && (
@@ -1081,7 +642,7 @@ export default function ToolPage({ searchParams }: PageProps) {
               )}
           </div>
         </div>
-        {/* Breadcrumb Structură */}
+
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center flex-wrap gap-2 text-xs font-medium text-slate-600">
           <button
             onClick={() => handleBreadcrumbClick(-1)}
@@ -1103,7 +664,6 @@ export default function ToolPage({ searchParams }: PageProps) {
           ))}
         </div>
 
-        {/* Tree Content (Carduri) */}
         <div className="p-6">
           {isTreeLoading ? (
             <div className="flex items-center justify-center h-48 text-sm font-medium text-slate-400 animate-pulse">
@@ -1151,174 +711,172 @@ export default function ToolPage({ searchParams }: PageProps) {
           ) : (
             !currentNode && (
               <div className="text-center py-6 text-sm text-slate-400 font-medium">
-                Nu există noduri în structură. Utilizați "Import Excel
-                Structure" sau configuratorul rapid standard.
+                Nu există noduri în structură. Utilizați configuratorul rapid
+                standard.
               </div>
             )
           )}
         </div>
       </div>
-
-      {/* Panou Piese de Schimb - Afișat dacă nodul selectat este terminal */}
-      {currentNode && currentLevelNodes.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                Spare Parts — {currentNode.node_name}
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Componente și piese din depozit asociate acestui asamblu
-                industrial.
-              </p>
+      {currentNode &&
+        [
+          "MECHANICAL",
+          "ELECTRICAL",
+          "HYDRAULIC",
+          "NUT FEEDER",
+          "CONSUMABLES",
+        ].includes(String(currentNode.node_name).toUpperCase()) && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                  Spare Parts — {currentNode.node_name}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Componente citite în timp real din tabela master globală.
+                </p>
+              </div>
+              <div className="w-full sm:w-72 relative">
+                <input
+                  type="text"
+                  placeholder="Caută după Cod, Specificație, Producător..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition-all"
+                />
+                <span className="absolute left-3 top-2.5 text-slate-400 text-xs">
+                  🔍
+                </span>
+              </div>
             </div>
-            <button
-              onClick={openAttachModal}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors"
-            >
-              + Attach Spare Part
-            </button>
-          </div>
-          <div className="p-6">
-            {parts.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/70">
-                      <th className="py-3 px-4">ENDR Code</th>
-                      <th className="py-3 px-4">Specification</th>
-                      <th className="py-3 px-4 text-center">Stock</th>
-                      <th className="py-3 px-4">Kardex Shelf</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 text-sm">
-                    {parts.map((part) => (
-                      <tr
-                        key={part.id}
-                        className="hover:bg-slate-50/50 transition-colors"
-                      >
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
-                          {part.endr_code}
-                        </td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-800">
-                          {part.specification || part.part_name || "-"}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span
-                            className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold font-mono ${part.stock_quantity <= (part.min_stock || 0) ? "bg-rose-50 text-rose-600 border border-rose-100" : "bg-slate-100 text-slate-700"}`}
-                          >
-                            {part.stock_quantity} buc
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
-                          {part.kardex_shelf
-                            ? `Raft ${part.kardex_shelf}`
-                            : "-"}
-                        </td>
-                        <td className="py-3.5 px-4 text-right flex items-center justify-end gap-3">
-                          {/* BUTON INTELIGENT DETECTOR SHEET / DOC */}
-                          <button
-                            onClick={() => {
-                              if (part.datasheet_url?.trim()) {
-                                let url = part.datasheet_url.trim();
-
-                                if (
-                                  !url.startsWith("http://") &&
-                                  !url.startsWith("https://")
-                                ) {
-                                  url = `https://${url}`;
+            <div className="p-6">
+              {filteredParts.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/70">
+                        <th className="py-3 px-4">ENDR Code</th>
+                        <th className="py-3 px-4">Specification</th>
+                        <th className="py-3 px-4">Manufacturer</th>
+                        <th className="py-3 px-4 text-center">Stock</th>
+                        <th className="py-3 px-4">Kardex Shelf</th>
+                        <th className="py-3 px-4 text-right">Datasheet</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 text-sm">
+                      {filteredParts.map((part) => (
+                        <tr
+                          key={part.id}
+                          className="hover:bg-slate-50/50 transition-colors"
+                        >
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
+                            {part.endr_code}
+                          </td>
+                          <td className="py-3.5 px-4 font-semibold text-slate-800">
+                            {part.specification || "-"}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 font-medium">
+                            {part.manufacturer || "Unknown"}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold font-mono ${part.stock_quantity <= (part.min_stock || 0) ? "bg-rose-50 text-rose-600 border border-rose-100" : "bg-slate-100 text-slate-700"}`}
+                            >
+                              {part.stock_quantity} buc
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
+                            {part.kardex_shelf
+                              ? `Raft ${part.kardex_shelf}`
+                              : "-"}
+                          </td>
+                          <td className="py-3.5 px-4 text-right flex items-center justify-end gap-3">
+                            <button
+                              onClick={() => {
+                                if (part.datasheet_url?.trim()) {
+                                  let url = part.datasheet_url.trim();
+                                  if (
+                                    !url.startsWith("http://") &&
+                                    !url.startsWith("https://")
+                                  ) {
+                                    url = `https://${url}`;
+                                  }
+                                  window.open(
+                                    url,
+                                    "_blank",
+                                    "noopener,noreferrer",
+                                  );
+                                  return;
                                 }
-
+                                const searchQuery = encodeURIComponent(
+                                  `${part.manufacturer || ""} ${part.part_number || ""} ${part.specification || ""}`,
+                                );
                                 window.open(
-                                  url,
+                                  `https://google.com{searchQuery}`,
                                   "_blank",
                                   "noopener,noreferrer",
                                 );
-                                return;
+                              }}
+                              className={`inline-flex items-center px-2 py-1.5 border shadow-sm text-xs font-bold rounded-lg transition-colors ${part.datasheet_url ? "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100" : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50"}`}
+                              title={
+                                part.datasheet_url
+                                  ? "Deschide fișa tehnică"
+                                  : "Caută pe Google"
                               }
-
-                              const searchQuery = encodeURIComponent(
-                                `${part.manufacturer || ""} ${part.part_number || ""} ${part.specification || ""}`,
-                              );
-
-                              // Deschide direct Google Images
-                              window.open(
-                                `https://www.google.com/search?tbm=isch&q=${searchQuery}`,
-                                "_blank",
-                              );
-                            }}
-                            className={`inline-flex items-center px-2 py-1.5 border shadow-sm text-xs font-bold rounded-lg transition-colors ${
-                              part.datasheet_url
-                                ? "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-                                : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
-                            }`}
-                            title={
-                              part.datasheet_url
-                                ? "Deschide fișa tehnică salvată"
-                                : "Caută fișa tehnică pe Google"
-                            }
-                          >
-                            📋{" "}
-                            <span className="ml-1">
-                              {part.datasheet_url ? "Sheet" : "Doc"}
-                            </span>
-                          </button>
-
-                          {/* CONTROALELE TALE DE STOC EXISTENTE */}
-                          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-                            <button
-                              onClick={() =>
-                                handleStockChange(
-                                  part.id,
-                                  part.stock_quantity,
-                                  -1,
-                                )
-                              }
-                              disabled={
-                                part.stock_quantity === 0 ||
-                                isUpdatingStock === part.id
-                              }
-                              className="px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded disabled:opacity-30 transition-all"
                             >
-                              -1
+                              📋{" "}
+                              <span className="ml-1">
+                                {part.datasheet_url ? "Sheet" : "Doc"}
+                              </span>
                             </button>
-                            <div className="w-[1px] bg-slate-100 my-1"></div>
-                            <button
-                              onClick={() =>
-                                handleStockChange(
-                                  part.id,
-                                  part.stock_quantity,
-                                  1,
-                                )
-                              }
-                              disabled={isUpdatingStock === part.id}
-                              className="px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded disabled:opacity-30 transition-all"
-                            >
-                              +1
-                            </button>
-                          </div>
-                          <button
-                            onClick={() => handleRemovePartFromNode(part.id)}
-                            className="text-xs text-rose-600 hover:text-rose-700 font-bold border border-rose-100 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors"
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-6 text-sm text-slate-400 font-medium">
-                Nu există piese atașate la acest ansamblu terminal.
-              </div>
-            )}
+
+                            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+                              <button
+                                onClick={() =>
+                                  handleStockChange(
+                                    part.id,
+                                    part.stock_quantity,
+                                    -1,
+                                  )
+                                }
+                                disabled={
+                                  part.stock_quantity === 0 ||
+                                  isUpdatingStock === part.id
+                                }
+                                className="px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded disabled:opacity-30 transition-all"
+                              >
+                                -1
+                              </button>
+                              <div className="w-[1px] bg-slate-100 my-1"></div>
+                              <button
+                                onClick={() =>
+                                  handleStockChange(
+                                    part.id,
+                                    part.stock_quantity,
+                                    1,
+                                  )
+                                }
+                                disabled={isUpdatingStock === part.id}
+                                className="px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded disabled:opacity-30 transition-all"
+                              >
+                                +1
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-6 text-sm text-slate-400 font-medium">
+                  Nu s-a găsit nicio piesă care să corespundă criteriilor de
+                  căutare.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-      {/* Istoric Intervenții */}
+        )}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-slate-50/50">
           <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
@@ -1376,7 +934,6 @@ export default function ToolPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {/* Node Modal (Add / Edit) */}
       {isNodeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-100 overflow-hidden">
@@ -1464,65 +1021,6 @@ export default function ToolPage({ searchParams }: PageProps) {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Select Spare Part Modal */}
-      {isAttachModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full border border-slate-100 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <h3 className="font-black text-slate-800 text-base uppercase tracking-tight">
-                Select Spare Part
-              </h3>
-              <button
-                onClick={() => setIsAttachModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-5 max-h-[400px] overflow-y-auto">
-              {allUnassignedParts.length > 0 ? (
-                <div className="divide-y divide-slate-100">
-                  {allUnassignedParts.map((part) => (
-                    <div
-                      key={part.id}
-                      className="py-3 flex items-center justify-between text-sm gap-4"
-                    >
-                      <div>
-                        <span className="font-mono font-bold text-slate-700 block">
-                          {part.endr_code}
-                        </span>
-                        <span className="text-slate-500 text-xs">
-                          {part.specification ||
-                            part.part_name ||
-                            "Fără specificații"}
-                        </span>
-                        {part.equipment_node_id && (
-                          <span className="block text-[10px] text-amber-600 font-semibold mt-0.5">
-                            ⚠️ Mută de la alt nod
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleAttachPart(part.id)}
-                        disabled={isAttachingPart === part.id}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50"
-                      >
-                        {isAttachingPart === part.id ? "Atașare..." : "Select"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 text-sm text-slate-400">
-                  Nu s-au găsit piese disponibile în sistem pentru utilajul{" "}
-                  {cleanToolNumber}.
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}
