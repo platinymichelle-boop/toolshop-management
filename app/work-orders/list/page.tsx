@@ -24,7 +24,7 @@ interface WorkOrder {
   actions_count: number;
 }
 
-type FilterStatus = "ALL" | "OPEN" | "IN PROGRESS" | "COMPLETED" | "CANCELLED";
+type FilterStatus = "ALL" | "OPEN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 
 export default function WorkOrdersListPage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -56,7 +56,7 @@ export default function WorkOrdersListPage() {
     switch (normalized) {
       case "OPEN":
         return "bg-blue-100 text-blue-700";
-      case "IN PROGRESS":
+      case "IN_PROGRESS":
         return "bg-amber-100 text-amber-700";
       case "COMPLETED":
         return "bg-green-100 text-green-700";
@@ -71,8 +71,8 @@ export default function WorkOrdersListPage() {
   const counts = {
     ALL: workOrders.length,
     OPEN: workOrders.filter((wo) => wo.status?.toUpperCase() === "OPEN").length,
-    "IN PROGRESS": workOrders.filter(
-      (wo) => wo.status?.toUpperCase() === "IN PROGRESS",
+    "IN_PROGRESS": workOrders.filter(
+      (wo) => wo.status?.toUpperCase() === "IN_PROGRESS",
     ).length,
     COMPLETED: workOrders.filter(
       (wo) => wo.status?.toUpperCase() === "COMPLETED",
@@ -158,14 +158,14 @@ export default function WorkOrdersListPage() {
           </div>
         </div>
 
-        {/* IN PROGRESS CARD */}
+        {/* IN_PROGRESS CARD */}
         <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               In Progress
             </span>
             <span className="text-2xl md:text-3xl font-bold text-amber-600 mt-1 block">
-              {counts["IN PROGRESS"]}
+              {counts["IN_PROGRESS"]}
             </span>
           </div>
           <div className="p-2.5 bg-amber-50 rounded-lg text-amber-500 hidden sm:block">
@@ -195,7 +195,7 @@ export default function WorkOrdersListPage() {
           [
             "ALL",
             "OPEN",
-            "IN PROGRESS",
+            "IN_PROGRESS",
             "COMPLETED",
             "CANCELLED",
           ] as FilterStatus[]
