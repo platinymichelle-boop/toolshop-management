@@ -383,17 +383,15 @@ function ToolPageContent() {
     e.preventDefault();
     try {
       if (modalMode === "create") {
-        await supabase
-          .from("equipment_nodes")
-          .insert([
-            {
-              tool_number: cleanToolNumber,
-              parent_id: parentId,
-              node_name: nodeName.trim(),
-              node_type: nodeType,
-              sort_order: sortOrder,
-            },
-          ]);
+        await supabase.from("equipment_nodes").insert([
+          {
+            tool_number: cleanToolNumber,
+            parent_id: parentId,
+            node_name: nodeName.trim(),
+            node_type: nodeType,
+            sort_order: sortOrder,
+          },
+        ]);
       } else if (modalMode === "edit" && editingNodeId) {
         await supabase
           .from("equipment_nodes")

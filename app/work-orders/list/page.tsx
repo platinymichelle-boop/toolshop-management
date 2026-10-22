@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Plus } from "lucide-react"; // Am adăugat Plus pentru optimizare UI pe mobil
+import {
+  ArrowLeft,
+  Plus,
+  ClipboardList,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+} from "lucide-react";
 
 interface WorkOrder {
   id: number;
@@ -17,9 +24,12 @@ interface WorkOrder {
   actions_count: number;
 }
 
+type FilterStatus = "ALL" | "OPEN" | "IN PROGRESS" | "COMPLETED" | "CANCELLED";
+
 export default function WorkOrdersListPage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
 
   useEffect(() => {
     async function loadWorkOrders() {
@@ -40,26 +50,63 @@ export default function WorkOrdersListPage() {
     loadWorkOrders();
   }, []);
 
+  // Helper funcție pentru stilizarea badge-urilor de status
+  const getStatusClass = (status: string) => {
+    const normalized = status?.toUpperCase() || "";
+    switch (normalized) {
+      case "OPEN":
+        return "bg-blue-100 text-blue-700";
+      case "IN PROGRESS":
+        return "bg-amber-100 text-amber-700";
+      case "COMPLETED":
+        return "bg-green-100 text-green-700";
+      case "CANCELLED":
+        return "bg-red-100 text-red-700";
+      default:
+        return "bg-slate-100 text-slate-700";
+    }
+  };
+
+  // Calculare dinamică KPI-uri și numărători filtre direct din starea brută
+  const counts = {
+    ALL: workOrders.length,
+    OPEN: workOrders.filter((wo) => wo.status?.toUpperCase() === "OPEN").length,
+    "IN PROGRESS": workOrders.filter(
+      (wo) => wo.status?.toUpperCase() === "IN PROGRESS",
+    ).length,
+    COMPLETED: workOrders.filter(
+      (wo) => wo.status?.toUpperCase() === "COMPLETED",
+    ).length,
+    CANCELLED: workOrders.filter(
+      (wo) => wo.status?.toUpperCase() === "CANCELLED",
+    ).length,
+  };
+
+  // Logica de filtrare a ordinelor de lucru
+  const filteredWorkOrders =
+    statusFilter === "ALL"
+      ? workOrders
+      : workOrders.filter((wo) => wo.status?.toUpperCase() === statusFilter);
+
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 max-w-7xl mx-auto font-medium text-slate-600">
-        Loading work orders...
+      <div className="p-4 md:p-6 max-w-7xl mx-auto font-medium text-slate-600 animate-pulse">
+        Loading dashboard data...
       </div>
     );
   }
-
   return (
-    // Păstrăm structura adaptivă de padding (p-4 pe mobil, p-6 pe desktop)
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* 
-        [MODIFICARE ANTET RESPONSIVE] 
-        Trecem de la flex-row fix la flex-col pe mobil pentru ca titlul 
-        și butoanele să nu se suprapună sau să iasă din ecran.
-      */}
+      {/* ANTET RESPONSIVE */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-          Work Orders History
-        </h1>
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
+            Work Orders History
+          </h1>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">
+            Manage and track preventive maintenance schedules.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <Link
             href="/preventive-maintenance"
@@ -79,16 +126,111 @@ export default function WorkOrdersListPage() {
         </div>
       </div>
 
-      {/* 
-        [REZOLVARE COMPLETA SCROLL MOBIL] 
-        Schimbăm overflow-hidden cu overflow-x-auto pe containerul exterior al tabelului.
-        Adăugăm min-w-[700px] pe eticheta <table> pentru a forța browserul de pe telefon 
-        să genereze scroll-ul orizontal nativ, lăsând toate coloanele vizibile la glisare (swipe).
-      */}
-      <div className="bg-white border rounded-xl overflow-x-auto shadow-sm select-none">
+      {/* CARDURI KPI (2 coloane pe mobil, 4 pe desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* TOTAL CARD */}
+        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Total WO
+            </span>
+            <span className="text-2xl md:text-3xl font-bold text-slate-800 mt-1 block">
+              {counts.ALL}
+            </span>
+          </div>
+          <div className="p-2.5 bg-slate-50 rounded-lg text-slate-500 hidden sm:block">
+            <ClipboardList className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* OPEN CARD */}
+        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Open
+            </span>
+            <span className="text-2xl md:text-3xl font-bold text-blue-600 mt-1 block">
+              {counts.OPEN}
+            </span>
+          </div>
+          <div className="p-2.5 bg-blue-50 rounded-lg text-blue-500 hidden sm:block">
+            <AlertCircle className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* IN PROGRESS CARD */}
+        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              In Progress
+            </span>
+            <span className="text-2xl md:text-3xl font-bold text-amber-600 mt-1 block">
+              {counts["IN PROGRESS"]}
+            </span>
+          </div>
+          <div className="p-2.5 bg-amber-50 rounded-lg text-amber-500 hidden sm:block">
+            <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        </div>
+
+        {/* COMPLETED CARD */}
+        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Completed
+            </span>
+            <span className="text-2xl md:text-3xl font-bold text-green-600 mt-1 block">
+              {counts.COMPLETED}
+            </span>
+          </div>
+          <div className="p-2.5 bg-green-50 rounded-lg text-green-500 hidden sm:block">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* BUTOANE FILTRARE DASHBOARD */}
+      <div className="flex flex-nowrap md:flex-wrap items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
+        {(
+          [
+            "ALL",
+            "OPEN",
+            "IN PROGRESS",
+            "COMPLETED",
+            "CANCELLED",
+          ] as FilterStatus[]
+        ).map((status) => {
+          const isActive = statusFilter === status;
+          return (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={`flex-shrink-0 inline-flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-lg transition-all duration-200 shadow-sm border ${
+                isActive
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+            >
+              <span>{status}</span>
+              <span
+                className={`inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-md ${
+                  isActive
+                    ? "bg-blue-700 text-white"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {counts[status]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* CONTANIER TABEL CU SCROLL INTACT PENTRU MOBIL */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm select-none">
         <table className="w-full text-left border-collapse min-w-[800px]">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs md:text-sm font-semibold whitespace-nowrap">
+            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs md:text-sm font-semibold whitespace-nowrap">
               <th className="p-4">WO Number</th>
               <th className="p-4">Tool Number</th>
               <th className="p-4">Scheduled Date</th>
@@ -99,17 +241,17 @@ export default function WorkOrdersListPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs md:text-sm whitespace-nowrap">
-            {workOrders.length === 0 ? (
+            {filteredWorkOrders.length === 0 ? (
               <tr>
                 <td
                   colSpan={7}
-                  className="p-8 text-center text-slate-400 font-medium italic"
+                  className="p-12 text-center text-slate-400 font-medium italic"
                 >
-                  No work orders generated yet.
+                  No work orders found matching the "{statusFilter}" filter.
                 </td>
               </tr>
             ) : (
-              workOrders.map((wo) => (
+              filteredWorkOrders.map((wo) => (
                 <tr
                   key={wo.id}
                   className="hover:bg-slate-50/50 transition-colors"
@@ -124,7 +266,9 @@ export default function WorkOrdersListPage() {
                     {new Date(wo.scheduled_date).toLocaleDateString("ro-RO")}
                   </td>
                   <td className="p-4">
-                    <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                    <span
+                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusClass(wo.status)}`}
+                    >
                       {wo.status}
                     </span>
                   </td>
