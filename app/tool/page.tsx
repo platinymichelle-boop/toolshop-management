@@ -362,7 +362,7 @@ function ToolPageContent() {
     setModalMode("create");
     setEditingNodeId(null);
     setNodeName("");
-    setNodeType(allowedNodeTypes || "");
+    setNodeType(allowedNodeTypes?.[0] ?? "");
     setParentId(currentNode ? currentNode.id : null);
     setSortOrder(currentLevelNodes.length * 10 + 10);
     setIsNodeModalOpen(true);
@@ -453,7 +453,7 @@ function ToolPageContent() {
     );
   }
 
-  const dynamicStatus = activeRepair ? activeRepair.status : "Available";
+  const dynamicStatus = activeRepair?.[0]?.status || "Available";
   const statusColor =
     dynamicStatus === "Available"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
