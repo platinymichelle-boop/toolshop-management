@@ -28,7 +28,7 @@ interface WorkOrder {
   tool_number: string;
   tool_name: string;
   scheduled_date: string;
-  status: "OPEN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | string;
+  status: "OPEN" | "IN PROGRESS" | "COMPLETED" | "CANCELLED" | string;
   created_by: string;
   actions_count: number;
   priority?: string;
@@ -178,7 +178,7 @@ export default function WorkOrderDetailsPage() {
       const { error } = await supabase
         .from("work_orders")
         .update({
-          status: "IN_PROGRESS",
+          status: "IN PROGRESS",
           started_at: new Date().toISOString(),
         })
         .eq("id", workOrder.id);
@@ -193,7 +193,7 @@ export default function WorkOrderDetailsPage() {
   }
 
   async function toggleActionChecked(actionId: number, currentStatus: boolean) {
-    if (!workOrder || workOrder.status !== "IN_PROGRESS") return;
+    if (!workOrder || workOrder.status !== "IN PROGRESS") return;
     try {
       const nextStatus = !currentStatus;
       const { error } = await supabase
@@ -225,7 +225,7 @@ export default function WorkOrderDetailsPage() {
   async function toggleAllActions() {
     if (
       !workOrder ||
-      workOrder.status !== "IN_PROGRESS" ||
+      workOrder.status !== "IN PROGRESS" ||
       actions.length === 0
     )
       return;
@@ -258,7 +258,7 @@ export default function WorkOrderDetailsPage() {
     }
   }
   async function completeWorkOrder() {
-    if (!workOrder || workOrder.status !== "IN_PROGRESS") return;
+    if (!workOrder || workOrder.status !== "IN PROGRESS") return;
 
     const allChecked = actions.every((act) => act.is_completed);
     if (!allChecked) {
@@ -414,7 +414,7 @@ export default function WorkOrderDetailsPage() {
                 <span>{isUpdating ? "Processing..." : "Start Work Order"}</span>
               </button>
             )}
-            {workOrder.status === "IN_PROGRESS" && (
+            {workOrder.status === "IN PROGRESS" && (
               <button
                 onClick={completeWorkOrder}
                 disabled={isUpdating}
@@ -459,7 +459,7 @@ export default function WorkOrderDetailsPage() {
                   className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
                     workOrder.status === "COMPLETED"
                       ? "bg-green-100 text-green-800"
-                      : workOrder.status === "IN_PROGRESS"
+                      : workOrder.status === "IN PROGRESS"
                         ? "bg-amber-100 text-amber-800"
                         : "bg-blue-100 text-blue-800"
                   }`}
@@ -526,21 +526,21 @@ export default function WorkOrderDetailsPage() {
               <div className="flex flex-col items-center">
                 <span
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    workOrder.status === "IN_PROGRESS" ||
+                    workOrder.status === "IN PROGRESS" ||
                     workOrder.status === "COMPLETED"
                       ? "bg-amber-100 text-amber-600 border border-amber-300"
                       : "bg-slate-100 text-slate-400 border border-slate-200"
                   }`}
                 >
-                  {workOrder.status === "IN_PROGRESS" ||
+                  {workOrder.status === "IN PROGRESS" ||
                   workOrder.status === "COMPLETED"
                     ? "✓"
                     : "○"}
                 </span>
                 <span
-                  className={`text-[11px] font-bold mt-1 ${workOrder.status === "IN_PROGRESS" ? "text-amber-600" : "text-slate-400"}`}
+                  className={`text-[11px] font-bold mt-1 ${workOrder.status === "IN PROGRESS" ? "text-amber-600" : "text-slate-400"}`}
                 >
-                  IN_PROGRESS
+                  IN PROGRESS
                 </span>
               </div>
               <div
@@ -692,7 +692,7 @@ export default function WorkOrderDetailsPage() {
                   Digital Execution Checklist
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {workOrder.status === "IN_PROGRESS"
+                  {workOrder.status === "IN PROGRESS"
                     ? "Bifează sarcinile pe măsură ce le execuți în teren."
                     : "Vizualizare istoric acțiuni preventive."}
                 </p>
@@ -758,7 +758,7 @@ export default function WorkOrderDetailsPage() {
                     <label className="flex items-center justify-center gap-1 cursor-pointer">
                       <input
                         type="checkbox"
-                        disabled={workOrder.status !== "IN_PROGRESS"}
+                        disabled={workOrder.status !== "IN PROGRESS"}
                         checked={isAllDone}
                         onChange={toggleAllActions}
                         className="w-4 h-4 rounded cursor-pointer accent-green-600 disabled:cursor-not-allowed opacity-80"
@@ -795,12 +795,12 @@ export default function WorkOrderDetailsPage() {
                       <td className="p-3 text-center border-r bg-slate-50/20">
                         <input
                           type="checkbox"
-                          disabled={workOrder.status !== "IN_PROGRESS"}
+                          disabled={workOrder.status !== "IN PROGRESS"}
                           checked={action.is_completed}
                           onChange={() =>
                             toggleActionChecked(action.id, action.is_completed)
                           }
-                          className={`w-5 h-5 rounded cursor-pointer accent-green-600 transition-all ${workOrder.status !== "IN_PROGRESS" ? "cursor-not-allowed opacity-60" : ""}`}
+                          className={`w-5 h-5 rounded cursor-pointer accent-green-600 transition-all ${workOrder.status !== "IN PROGRESS" ? "cursor-not-allowed opacity-60" : ""}`}
                         />
                       </td>
                       <td className="p-3">
@@ -864,7 +864,7 @@ export default function WorkOrderDetailsPage() {
           </div>
         </div>
 
-        {(workOrder.status === "IN_PROGRESS" ||
+        {(workOrder.status === "IN PROGRESS" ||
           workOrder.status === "COMPLETED") && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 md:p-6 shadow-sm space-y-4">
             <h2 className="font-bold text-slate-800 text-sm border-b pb-2 uppercase tracking-wide font-mono flex items-center gap-2">
