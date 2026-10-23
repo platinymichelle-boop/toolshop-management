@@ -33,6 +33,7 @@ export default function RootLayout({
   const [isProductionUser, setIsProductionUser] = useState<boolean>(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // Verificăm instant dacă utilizatorul accesează un link de aprobare trimis pe email
   const isApprovalPage = pathname.startsWith("/approval/");
 
   useEffect(() => {
@@ -71,6 +72,7 @@ export default function RootLayout({
     verifyUserAccess();
   }, [pathname]);
 
+  // Logica de redirecționare automată: utilizatorii de producție sunt ținuți doar pe zonele lor permise
   useEffect(() => {
     if (checkingAuth || !isProductionUser) return;
 
@@ -81,8 +83,9 @@ export default function RootLayout({
     }
   }, [isProductionUser, pathname, checkingAuth, router, isApprovalPage]);
 
+  // Funcția de deconectare completă
   async function handleGlobalSignOut() {
-    if (!confirm("Sigur doriți să te deconectați?")) return;
+    if (!confirm("Sigur dorești să te deconectezi?")) return;
 
     try {
       localStorage.clear();
@@ -104,7 +107,9 @@ export default function RootLayout({
     window.location.replace("/");
   }
 
+  // Stabilim dacă ascundem Sidebar-ul: îl ascundem dacă e utilizator de producție SAU dacă suntem pe o pagină de aprobare publică
   const shouldHideSidebar = isProductionUser || isApprovalPage;
+
   return (
     <html
       lang="ro"
@@ -130,19 +135,25 @@ export default function RootLayout({
           content="black-translucent"
         />
       </head>
-      <body className="min-h-screen w-full flex flex-col bg-zinc-50 text-slate-900 overflow-x-hidden antialiased">
+      <body className="min-h-screen w-full flex flex-col bg-gray-50 text-slate-900 overflow-x-hidden antialiased">
         <Toaster position="top-right" reverseOrder={false} />
 
         <LanguageProvider>
           {checkingAuth ? (
-            <div className="flex-1 flex items-center justify-center bg-zinc-50 text-slate-500 text-sm font-semibold min-h-screen w-full">
+            <div className="flex-1 flex items-center justify-center bg-gray-50 text-slate-500 text-sm font-semibold min-h-screen w-full">
               Se încarcă configurația...
             </div>
           ) : (
-            <div className="flex-1 w-full flex min-h-screen bg-zinc-50">
+            <div className="flex-1 w-full flex min-h-screen">
+              {/* Sidebar-ul se ascunde complet dacă ar trebui ascuns */}
               {!shouldHideSidebar && <Sidebar />}
 
               <div className="flex-1 flex flex-col min-w-0 w-full">
+                {/* 
+                  [LOGICĂ MODIFICATĂ] 
+                  Antetul utiliar se randează doar pentru utilizatorii de producție 
+                  și DOAR dacă NU se află pe pagina dedicată aprobărilor trimise pe email.
+                */}
                 {shouldHideSidebar && !isApprovalPage && (
                   <header className="w-full bg-slate-900 text-white px-6 py-3 flex justify-between items-center shadow-md shrink-0 border-b border-slate-800">
                     <div className="flex items-center gap-2">
@@ -160,6 +171,7 @@ export default function RootLayout({
                   </header>
                 )}
 
+                {/* Main-ul se extinde acum pe tot ecranul, eliminând padding-ul când Sidebar-ul este ascuns */}
                 <main
                   className={
                     shouldHideSidebar

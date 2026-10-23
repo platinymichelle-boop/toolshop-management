@@ -56,7 +56,7 @@
 }
 
 :root {
-  --background: oklch(0.985 0 0);
+  --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -80,13 +80,13 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.915 0.005 240); /* CONF: Nuanță închisă pe gri mat industrial */
+  --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.87 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.82 0 0);
+  --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 }
 
@@ -126,38 +126,12 @@
 
 @layer base {
   * {
-    border-color: var(--border);
-    outline-color: cubic-bezier(0.708, 0, 0);
+    @apply border-border outline-ring/50;
   }
-  body, html, body > div:first-child {
-    background-color: var(--background);
-    color: var(--foreground);
-    height: 100% !important;
-    min-height: 100vh !important;
+  body {
+    @apply bg-background text-foreground;
   }
-  aside {
-    height: 100vh !important;
-    position: sticky !important;
-    top: 0 !important;
-    bottom: 0 !important;
+  html {
+    @apply font-sans;
   }
-}
-
-.scrollbar-thin::-webkit-scrollbar {
-  width: 4px;
-}
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: var(--sidebar-border);
-  border-radius: 2px;
-}
-button:disabled {
-  cursor: not-allowed;
-}
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
