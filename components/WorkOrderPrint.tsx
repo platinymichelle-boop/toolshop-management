@@ -17,6 +17,8 @@ interface PrintAction {
   required_material?: string | null;
   remarks?: string | null;
   priority?: string | null;
+  action_en?: string | null;
+  action_ro?: string | null;
 }
 
 interface WorkOrderPrintProps {
@@ -27,6 +29,7 @@ interface WorkOrderPrintProps {
   priority: string;
   status: string;
   actions: PrintAction[];
+  language?: "EN" | "RO";
 }
 
 export default function WorkOrderPrint({
@@ -37,6 +40,7 @@ export default function WorkOrderPrint({
   priority,
   status,
   actions,
+  language = "EN",
 }: WorkOrderPrintProps) {
   // Generare listă unică pentru secțiunea TOOLS & MATERIALS REQUIRED
   const uniqueToolsAndMaterials = Array.from(
@@ -162,7 +166,7 @@ export default function WorkOrderPrint({
               </span>{" "}
               <span className="font-black text-sm">{toolNumber}</span>
             </div>
-           
+
             <div>
               <span className="font-bold text-slate-500 uppercase">
                 Assigned Technician:
@@ -201,7 +205,6 @@ export default function WorkOrderPrint({
                 {displayFrequency}
               </span>
             </div>
-            
           </div>
         </div>
 
@@ -224,7 +227,9 @@ export default function WorkOrderPrint({
                     <span className="font-mono text-slate-400 mr-2 text-xs">
                       {(index + 1).toString().padStart(2, "0")}.
                     </span>
-                    {act.task_description}
+                    {language === "RO"
+                      ? act.action_ro || act.task_description
+                      : act.action_en || act.task_description}
                   </div>
                   <div className="font-mono text-xs font-bold text-slate-800 uppercase px-2 bg-slate-100 border border-black rounded">
                     {act.frequency || displayFrequency}

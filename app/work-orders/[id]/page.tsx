@@ -59,6 +59,8 @@ interface WorkOrderAction {
   required_material?: string | null;
   remarks?: string | null;
   priority?: string | null;
+  action_en?: string | null;
+  action_ro?: string | null;
 }
 
 type ChecklistFilter = "ALL" | "OPEN" | "COMPLETED";
@@ -78,6 +80,7 @@ export default function WorkOrderDetailsPage() {
     useState<ChecklistFilter>("ALL");
   const [completedBy, setCompletedBy] = useState("");
   const [completionComments, setCompletionComments] = useState("");
+  const [printLanguage, setPrintLanguage] = useState<"EN" | "RO">("EN");
 
   useEffect(() => {
     if (id) {
@@ -123,7 +126,7 @@ export default function WorkOrderDetailsPage() {
           .from("pm_tasks")
           .select(
             `
-            id, workcenter, equipment, sub_equipment, maintenance_equipment, operation, 
+            id,action,actiune,workcenter, equipment, sub_equipment, maintenance_equipment, operation, 
             control_method, technician, estimated_time , part_reference, 
             required_material, remarks, priority
           `,
@@ -156,6 +159,8 @@ export default function WorkOrderDetailsPage() {
           required_material: matchingPmTask.required_material || null,
           remarks: matchingPmTask.remarks || null,
           priority: matchingPmTask.priority || null,
+          action_en: matchingPmTask.action || null,
+          action_ro: matchingPmTask.actiune || null,
         };
       });
 
@@ -382,6 +387,7 @@ export default function WorkOrderDetailsPage() {
         priority={workOrder.priority || "MEDIUM"}
         status={workOrder.status || "OPEN"}
         actions={actions}
+        language={printLanguage}
       />
 
       <div className="p-6 max-w-7xl mx-auto space-y-6 print:hidden">
@@ -431,6 +437,15 @@ export default function WorkOrderDetailsPage() {
                 ✓ COMPLETED
               </span>
             )}
+
+            <select
+              value={printLanguage}
+              onChange={(e) => setPrintLanguage(e.target.value as "EN" | "RO")}
+              className="px-3 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold bg-white"
+            >
+              <option value="EN">🇬🇧 English</option>
+              <option value="RO">🇷🇴 Română</option>
+            </select>
             <button
               onClick={handlePrint}
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg transition-colors border border-slate-200"
@@ -438,6 +453,7 @@ export default function WorkOrderDetailsPage() {
               <Printer className="w-4 h-4" />
               <span>Print Document</span>
             </button>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto"></div>
           </div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:p-6 grid grid-cols-1 md:grid-cols-5 gap-6">
