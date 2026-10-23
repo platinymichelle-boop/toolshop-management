@@ -110,7 +110,7 @@ export default function PreventiveMaintenanceDashboard() {
       (wo) => String(wo.status).toUpperCase() === "OPEN",
     ).length;
     const inProgress = workOrders.filter(
-      (wo) => String(wo.status).toUpperCase() === "IN_PROGRESS",
+      (wo) => String(wo.status).toUpperCase() === "IN PROGRESS",
     ).length;
     const completed = workOrders.filter(
       (wo) => String(wo.status).toUpperCase() === "COMPLETED",
@@ -120,7 +120,7 @@ export default function PreventiveMaintenanceDashboard() {
     const completionRate =
       total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    // Maintenance Health Score formula -> (COMPLETED + IN_PROGRESS * 0.5) / TOTAL * 100
+    // Maintenance Health Score formula -> (COMPLETED + IN PROGRESS * 0.5) / TOTAL * 100
     const healthScore =
       total > 0
         ? Math.round(((completed + inProgress * 0.5) / total) * 100)
