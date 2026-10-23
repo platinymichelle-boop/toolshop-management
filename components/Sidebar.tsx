@@ -157,6 +157,11 @@ export default function Sidebar() {
             badge: kpis.lowStockParts > 0 ? kpis.lowStockParts : null,
             badgeType: "danger",
           },
+          {
+            name: "Factory Monitor",
+            href: "/live-factory",
+            icon: Factory,
+          },
         ],
       },
       {
@@ -167,15 +172,16 @@ export default function Sidebar() {
             href: "/preventive-maintenance",
             icon: Wrench,
           },
-
           {
             name: "Weekly Planning",
             href: "/weekly-maintenance",
             icon: ClipboardCheck,
           },
-
-          { name: "Technical Team", href: "/technicians", icon: Users },
-          { name: "Improvements", href: "/improvements", icon: Lightbulb },
+          {
+            name: "Technical Team",
+            href: "/technicians",
+            icon: Users,
+          },
           {
             name: "Fluid Management",
             href: "/fluid-management",

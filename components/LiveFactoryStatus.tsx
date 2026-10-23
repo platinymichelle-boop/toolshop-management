@@ -45,7 +45,6 @@ export default function LiveFactoryStatus() {
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [isTvMode, setIsTvMode] = useState<boolean>(false);
 
-  // Stări noi pentru filtrare și căutare industrială
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [activeFilter, setActiveFilter] = useState<
     "ALL" | "RUNNING" | "BREAKDOWN" | "PM"
@@ -58,22 +57,34 @@ export default function LiveFactoryStatus() {
       .replace(/PRESA|PRS|[-\s]/g, "")
       .trim();
   };
-
   const fetchFactoryStatus = async () => {
     try {
       setHasError(false);
-      const { data: toolsData, error: toolsError } = await supabase
-        .from("tools")
-        .select("id, tool_number");
 
+      // 1. Inițializăm data curentă la miezul nopții pentru compararea corectă a termenelor limită
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // 2. Declanșăm interogările în paralel către Supabase
+      const [
+        { data: toolsData, error: toolsError },
+        { data: breakdownsData, error: breakdownsError },
+        { data: pmTasksData, error: pmTasksError },
+        { data: workOrdersData, error: workOrdersError },
+      ] = await Promise.all([
+        supabase.from("tools").select("id, tool_number"),
+        supabase.from("breakdowns").select("id, press_number, status"),
+        supabase.from("pm_tasks").select("tool_number, next_due_at, status"),
+        supabase.from("work_orders").select("tool_number, status"),
+      ]);
+
+      // Verificarea centralizată a erorilor din baza de date
       if (toolsError) throw toolsError;
-
-      const { data: breakdownsData, error: breakdownsError } = await supabase
-        .from("breakdowns")
-        .select("id, press_number, status");
-
       if (breakdownsError) throw breakdownsError;
+      if (pmTasksError) throw pmTasksError;
+      if (workOrdersError) throw workOrdersError;
 
+      // 3. Mapare Set pentru utilajele aflate în BREAKDOWN (Prioritate Maximă)
       const activeBreakdownPressNumbers = new Set(
         (breakdownsData || [])
           .filter((b: Breakdown) => b.status === "Running")
@@ -81,31 +92,81 @@ export default function LiveFactoryStatus() {
           .filter((num) => num !== ""),
       );
 
-      const mappedStatus: ToolStatus[] = (toolsData || []).map(
-        (tool: Tool, index: number) => {
-          const hasBreakdown = activeBreakdownPressNumbers.has(
-            normalizeName(tool.tool_number),
-          );
-          const hasPM = !hasBreakdown && index % 7 === 0 && index !== 0;
+      // 4. Mapare Set pentru PM-uri active din tabela `pm_tasks` pe baza regulilor noi (OVERDUE sau Expired)
+      const activePmTasksNumbers = new Set(
+        (pmTasksData || [])
+          .filter((task) => {
+            if (!task.tool_number) return false;
 
-          return {
-            ...tool,
-            hasBreakdown,
-            hasPM,
-          };
-        },
+            // Normalizare status task din pm_tasks
+            const normalizedTaskStatus = task.status?.toUpperCase().trim();
+
+            // LOGICA NOUĂ: PM activ doar dacă statusul este explicit OVERDUE
+            const isStatusOverdue = normalizedTaskStatus === "OVERDUE";
+
+            // Verificare dacă data next_due_at este scadentă (<= Astăzi)
+            let isDueDatePassed = false;
+            if (task.next_due_at) {
+              const dueDate = new Date(task.next_due_at);
+              dueDate.setHours(0, 0, 0, 0);
+              isDueDatePassed = dueDate <= today;
+            }
+
+            // Task-urile cu status='OPEN' și data în viitor vor returna false aici și vor fi ignorate automat
+            return isStatusOverdue || isDueDatePassed;
+          })
+          .map((task) => normalizeName(task.tool_number)),
       );
 
+      // 5. Mapare Set pentru PM-uri din `work_orders` (Planificate, În Curs sau Deschise)
+      const validPmWorkOrderStatuses = ["OPEN", "IN PROGRESS", "PLANNED"];
+      const activeWorkOrdersNumbers = new Set(
+        (workOrdersData || [])
+          .filter((wo) => {
+            if (!wo.tool_number) return false;
+            const normalizedWoStatus = wo.status?.toUpperCase().trim();
+            return validPmWorkOrderStatuses.includes(normalizedWoStatus);
+          })
+          .map((wo) => normalizeName(wo.tool_number)),
+      );
+
+      // 6. Construirea matricei finale stării fabricii bazată pe priorități și date reale
+      const mappedStatus: ToolStatus[] = (toolsData || []).map((tool: Tool) => {
+        const normalizedToolNum = normalizeName(tool.tool_number);
+
+        // A. Inspectăm mai întâi starea de Breakdown (Prioritate absolută)
+        const hasBreakdown = activeBreakdownPressNumbers.has(normalizedToolNum);
+
+        // B. Inspectăm starea de PM real (Doar dacă utilajul NU are un breakdown activ)
+        const hasPM =
+          !hasBreakdown &&
+          (activePmTasksNumbers.has(normalizedToolNum) ||
+            activeWorkOrdersNumbers.has(normalizedToolNum));
+
+        return {
+          ...tool,
+          hasBreakdown,
+          hasPM,
+        };
+      });
+
       setToolsStatus(mappedStatus);
+
       const now = new Date();
       setLastRefresh(now.toLocaleTimeString("ro-RO", { hour12: false }));
-    } catch (error) {
-      console.error("Error fetching factory status:", error);
+    } catch (error: any) {
+      console.error("Error fetching factory status:", {
+        message: error?.message || error,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+      });
       setHasError(true);
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     setIsMounted(true);
     fetchFactoryStatus();
@@ -128,8 +189,6 @@ export default function LiveFactoryStatus() {
 
     return () => clearInterval(clockInterval);
   }, []);
-
-  // Calculare statistici globale memorate prin useMemo
   const stats = useMemo(() => {
     const totalMachines = toolsStatus.length;
     const totalBreakdown = toolsStatus.filter((t) => t.hasBreakdown).length;
@@ -139,7 +198,6 @@ export default function LiveFactoryStatus() {
     return { totalMachines, totalBreakdown, totalPM, totalRunning };
   }, [toolsStatus]);
 
-  // Filtrarea dinamică a matricii pe baza inputului operatorului
   const filteredTools = useMemo(() => {
     return toolsStatus.filter((tool) => {
       const matchesSearch =
@@ -171,21 +229,18 @@ export default function LiveFactoryStatus() {
       }}
     >
       <div className="w-full mx-auto space-y-4 max-w-[100vw]">
-        {/* ALERTĂ DE EROARE STATUS REȚEA / SUPABASE */}
         {hasError && (
           <div className="bg-red-950/80 border-2 border-red-500 text-red-200 p-3 rounded-lg flex items-center gap-3 animate-pulse shadow-lg text-xs font-bold">
             <WifiOff className="w-4 h-4 text-red-400" />
             <span>
-              EROARE PIPELINE SCADA: Conexiunea cu serverul de date a eșuat. Se
-              încearcă reconectarea automată...
+              EROARE PIPELINE SCADA: Conexiunea cu serverul a eșuat. Se încearcă
+              reconectarea...
             </span>
           </div>
         )}
 
-        {/* HEADER INDUSTRIAL */}
         <header className="relative bg-slate-900/90 border-2 border-slate-800 rounded-lg p-4 shadow-[0_0_25px_rgba(0,0,0,0.5)] overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-cyan-500 via-blue-500 to-amber-500"></div>
-
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-4">
               <div className="bg-slate-950 p-2.5 rounded border border-slate-800 flex items-center justify-center shadow-inner">
@@ -195,7 +250,7 @@ export default function LiveFactoryStatus() {
                 <h1
                   className={`${isTvMode ? "text-3xl md:text-4xl" : "text-2xl md:text-3xl"} font-black tracking-tighter text-slate-100 flex items-center gap-3`}
                 >
-                  🏭 LIVE FACTORY MONITOR
+                  🏭 LIVE FACTORY MONITOR{" "}
                   <span className="text-xs font-semibold px-1 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700">
                     v3.5_SCADA
                   </span>
@@ -204,8 +259,7 @@ export default function LiveFactoryStatus() {
                   Manufacturing Execution System Matrix
                 </p>
               </div>
-
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 text-xs font-bold shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 text-xs font-bold">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -229,15 +283,9 @@ export default function LiveFactoryStatus() {
                   </span>
                 </div>
               </div>
-
               <button
                 onClick={() => setIsTvMode(!isTvMode)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md font-bold text-xs uppercase tracking-wider transition-all duration-200 border shadow-md
-                  ${
-                    isTvMode
-                      ? "bg-amber-500 text-slate-950 border-amber-400 hover:bg-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
-                      : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 border-transparent"
-                  }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md font-bold text-xs uppercase tracking-wider transition-all duration-200 border shadow-md ${isTvMode ? "bg-amber-500 text-slate-950 border-amber-400 hover:bg-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]" : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"}`}
               >
                 <Tv className="w-4 h-4" />
                 {isTvMode ? "Exit TV Mode" : "TV Mode"}
@@ -246,7 +294,6 @@ export default function LiveFactoryStatus() {
           </div>
         </header>
 
-        {/* PANOU DE FILTRARE ȘI CĂUTARE MODULAR */}
         <section className="bg-slate-900/40 border border-slate-900 p-3 rounded-lg flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
@@ -258,7 +305,6 @@ export default function LiveFactoryStatus() {
               className="w-full bg-slate-950 border border-slate-800 rounded px-9 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
             />
           </div>
-
           <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
             <button
               onClick={() => setActiveFilter("ALL")}
@@ -286,8 +332,6 @@ export default function LiveFactoryStatus() {
             </button>
           </div>
         </section>
-
-        {/* SCADA KPI CARDS */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex items-center justify-between shadow-md">
             <div>
@@ -302,8 +346,8 @@ export default function LiveFactoryStatus() {
             </div>
             <Boxes className="w-8 h-8 text-slate-600" />
           </div>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex items-center justify-between shadow-md relative overflow-hidden group">
-            <div className="absolute inset-0 bg-emerald-500/[0.02] shadow-[inset_0_0_15px_rgba(16,185,129,0.05)]"></div>
+          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex items-center justify-between shadow-md relative overflow-hidden">
+            <div className="absolute inset-0 bg-emerald-500/[0.02]"></div>
             <div>
               <span className="text-[10px] text-emerald-500/80 uppercase tracking-widest font-bold block">
                 🟢 RUNNING_STATUS
@@ -316,10 +360,8 @@ export default function LiveFactoryStatus() {
             </div>
             <Activity className="w-8 h-8 text-emerald-600/50" />
           </div>
-
           <div
-            className={`border rounded-lg p-3 flex items-center justify-between shadow-md relative overflow-hidden transition-all duration-300
-            ${stats.totalBreakdown > 0 ? "bg-red-950/20 border-red-900/60 shadow-[0_0_15px_rgba(239,68,68,0.05)]" : "bg-slate-900/50 border-slate-800"}`}
+            className={`border rounded-lg p-3 flex items-center justify-between shadow-md relative overflow-hidden transition-all duration-300 ${stats.totalBreakdown > 0 ? "bg-red-950/20 border-red-900/60 shadow-[0_0_15px_rgba(239,68,68,0.05)]" : "bg-slate-900/50 border-slate-800"}`}
           >
             {stats.totalBreakdown > 0 && (
               <div className="absolute inset-0 bg-red-500/[0.02] animate-pulse"></div>
@@ -340,9 +382,8 @@ export default function LiveFactoryStatus() {
               className={`w-8 h-8 ${stats.totalBreakdown > 0 ? "text-red-500 animate-bounce" : "text-slate-600/50"}`}
             />
           </div>
-
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex items-center justify-between shadow-md relative overflow-hidden">
-            <div className="absolute inset-0 bg-amber-500/[0.01] shadow-[inset_0_0_12px_rgba(245,158,11,0.02)]"></div>
+            <div className="absolute inset-0 bg-amber-500/[0.01]"></div>
             <div>
               <span className="text-[10px] text-amber-500/80 uppercase tracking-widest font-bold block">
                 🟡 PM_ACTIVE_MAINT
@@ -357,7 +398,6 @@ export default function LiveFactoryStatus() {
           </div>
         </section>
 
-        {/* GRID COMPLEX FACTORY MATRIX */}
         <main className="relative min-h-[50vh]">
           {loading && toolsStatus.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-800 rounded-lg bg-slate-900/20 backdrop-blur-sm">
@@ -380,6 +420,7 @@ export default function LiveFactoryStatus() {
                     🟢 RUNNING
                   </span>
                 );
+
                 if (tool.hasBreakdown) {
                   statusClass =
                     "border-red-900/80 bg-red-950/20 text-red-200 cursor-pointer animate-[pulse_2.5s_infinite_ease-in-out] hover:border-red-500 hover:bg-red-950/40 shadow-[inset_0_1px_2px_rgba(239,68,68,0.1)]";
@@ -415,18 +456,16 @@ export default function LiveFactoryStatus() {
                       </div>
                       {statusBadge}
                     </div>
-
                     <div className="my-auto flex flex-col">
                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                         Device address
                       </span>
                       <span
-                        className={`${isTvMode ? "text-xl" : "text-lg"} font-black tracking-tighter text-slate-200 truncate transition-colors duration-200 group-hover:text-cyan-400`}
+                        className={`${isTvMode ? "text-xl" : "text-lg"} font-black tracking-tighter text-slate-200 truncate group-hover:text-cyan-400`}
                       >
                         {tool.tool_number}
                       </span>
                     </div>
-
                     <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 mt-2 pt-1 border-t border-slate-800/40">
                       <span>PLC_STAT: OK</span>
                       {tool.hasBreakdown ? (
@@ -444,14 +483,12 @@ export default function LiveFactoryStatus() {
           )}
         </main>
 
-        {/* BARA INFERIOARĂ DE STATUS */}
         <footer className="bg-slate-900 border-2 border-slate-800 rounded-lg p-3 text-xs shadow-md">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
             <div className="flex items-center gap-2 font-bold tracking-wider text-slate-400 uppercase text-[11px]">
               <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
               SCADA CORE INTEGRATION MAP:
             </div>
-
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] font-bold text-slate-400">
               <div className="flex items-center gap-1.5 bg-slate-950/60 px-2 py-1 rounded border border-slate-800/80">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
