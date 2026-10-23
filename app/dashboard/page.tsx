@@ -12,13 +12,14 @@ import {
   Lightbulb,
   Clock,
   TrendingUp,
-  FileText,
   Activity,
   Layers,
   Package,
   ShieldAlert,
   HeartPulse,
+  ChevronRight,
   ExternalLink,
+  FileText,
 } from "lucide-react";
 
 interface KPICardProps {
@@ -34,12 +35,12 @@ const KPICard: React.FC<KPICardProps> = ({
   icon,
   colorClass,
 }) => (
-  <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between min-w-0 w-full transition-all hover:shadow-md">
+  <div className="bg-white dark:bg-zinc-900 p-5 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-800 flex items-center justify-between transition-all hover:shadow-md hover:border-zinc-200 dark:hover:border-zinc-700">
     <div className="min-w-0 flex-1 pr-2">
-      <p className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider truncate">
+      <p className="text-xs font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider truncate">
         {title}
       </p>
-      <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1 truncate">
+      <p className="text-2xl font-extrabold text-zinc-900 dark:text-zinc-100 mt-1 truncate tracking-tight">
         {value}
       </p>
     </div>
@@ -74,6 +75,7 @@ interface RecentActivityItem {
   title: string;
   status: string;
 }
+
 export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [lastRefresh, setLastRefresh] = useState<string>("");
@@ -89,18 +91,17 @@ export const DashboardPage: React.FC = () => {
   const [totalSpareParts, setTotalSpareParts] = useState<number>(0);
   const [criticalSpareParts, setCriticalSpareParts] = useState<number>(0);
 
-  const [recentBreakdowns, setRecentBreakdowns] = useState<Breakdown[]>([]);
+  const [, setRecentBreakdowns] = useState<Breakdown[]>([]);
   const [openRepairs, setOpenRepairs] = useState<Repair[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>(
     [],
   );
-
   const [quickAccessTools, setQuickAccessTools] = useState<string[]>([]);
+
   const [machineHealth, setMachineHealth] = useState<{
     score: number;
     status: "good" | "warning" | "critical";
   }>({ score: 100, status: "good" });
-
   const fetchDashboardData = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
     try {
@@ -224,6 +225,7 @@ export const DashboardPage: React.FC = () => {
           }),
         ),
       ];
+
       combinedActivity.sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -254,7 +256,6 @@ export const DashboardPage: React.FC = () => {
       setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     fetchDashboardData(true);
     const interval = setInterval(() => fetchDashboardData(), 30000);
@@ -263,60 +264,60 @@ export const DashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-2">
-          <Activity className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-sm font-medium text-gray-500">
+      <div className="flex h-screen w-full items-center justify-center bg-zinc-950">
+        <div className="flex flex-col items-center gap-3">
+          <Activity className="h-8 w-8 animate-spin text-emerald-500" />
+          <p className="text-sm font-semibold text-zinc-400">
             Se încarcă datele panoului...
           </p>
         </div>
       </div>
     );
   }
+
   return (
-    <div className="min-h-screen w-full bg-gray-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen w-full bg-zinc-950 p-4 sm:p-6 lg:p-8 text-zinc-300">
       {/* Zona Antet Dashboard */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-100 sm:text-3xl">
             Maintenance Dashboard
-          
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-zinc-500 mt-1">
             Real-time overview of shop floor operations and live equipment
             status.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-medium text-gray-400 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-100 self-start sm:self-center">
-          <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+        <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 bg-zinc-900 px-3 py-2 rounded-xl shadow-sm border border-zinc-800 self-start sm:self-center">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           Last Refresh: {lastRefresh}
         </div>
       </div>
 
       {/* Rândul 1: Index Stare Generală Sănătate Mașini */}
-      <div className="mb-6 w-full bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6 w-full bg-zinc-900 p-5 rounded-xl shadow-sm border border-zinc-800 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div
-            className={`p-3 rounded-xl ${machineHealth.status === "good" ? "bg-green-50 text-green-600" : machineHealth.status === "warning" ? "bg-yellow-50 text-yellow-600" : "bg-red-50 text-red-600"}`}
+            className={`p-3 rounded-xl ${machineHealth.status === "good" ? "bg-emerald-500/10 text-emerald-400" : machineHealth.status === "warning" ? "bg-amber-500/10 text-amber-400" : "bg-rose-500/10 text-rose-400"}`}
           >
             <HeartPulse className="h-6 w-6" />
           </div>
           <div>
-            <h3 className="font-bold text-gray-900">
+            <h3 className="font-bold text-zinc-100">
               Overall Machine Health Index
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-zinc-500 mt-0.5">
               Calculated dynamically from active breakdown logs and open work
               orders.
             </p>
           </div>
         </div>
-        <div className="text-left sm:text-right border-t pt-3 sm:border-t-0 sm:pt-0 border-gray-100">
-          <div className="text-3xl font-extrabold text-gray-900">
+        <div className="text-left sm:text-right border-t pt-3 sm:border-t-0 sm:pt-0 border-zinc-800">
+          <div className="text-3xl font-black text-zinc-100 tracking-tight">
             {machineHealth.score}%
           </div>
           <span
-            className={`inline-flex items-center text-xs font-bold uppercase tracking-wider mt-1 ${machineHealth.status === "good" ? "text-green-600" : machineHealth.status === "warning" ? "text-yellow-600" : "text-red-600"}`}
+            className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider mt-1.5 ${machineHealth.status === "good" ? "text-emerald-400" : machineHealth.status === "warning" ? "text-amber-400" : "text-rose-400"}`}
           >
             {machineHealth.status === "good"
               ? "● Good Standing"
@@ -326,108 +327,111 @@ export const DashboardPage: React.FC = () => {
           </span>
         </div>
       </div>
-
       {/* Rândul 2: Toate Cardurile KPI principale */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-8">
         <KPICard
           title="Total Machines"
           value={totalMachines}
-          icon={<Wrench className="h-5 w-5 text-blue-600" />}
-          colorClass="bg-blue-50"
+          icon={<Wrench className="h-5 w-5 text-blue-400" />}
+          colorClass="bg-blue-500/10"
         />
         <KPICard
           title="Open Repairs"
           value={openWorkOrders}
-          icon={<ClipboardList className="h-5 w-5 text-amber-600" />}
-          colorClass="bg-amber-50"
+          icon={<ClipboardList className="h-5 w-5 text-amber-400" />}
+          colorClass="bg-amber-500/10"
         />
         <KPICard
           title="Completed"
           value={completedWorkOrders}
-          icon={<CheckCircle className="h-5 w-5 text-green-600" />}
-          colorClass="bg-green-50"
+          icon={<CheckCircle className="h-5 w-5 text-emerald-400" />}
+          colorClass="bg-emerald-500/10"
         />
         <KPICard
           title="Active Breakdowns"
           value={activeBreakdowns}
-          icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
-          colorClass="bg-red-50"
+          icon={<AlertTriangle className="h-5 w-5 text-rose-400" />}
+          colorClass="bg-rose-500/10"
         />
         <KPICard
           title="Available Techs"
           value={availableTechnicians}
-          icon={<Users className="h-5 w-5 text-teal-600" />}
-          colorClass="bg-teal-50"
+          icon={<Users className="h-5 w-5 text-teal-400" />}
+          colorClass="bg-teal-500/10"
         />
         <KPICard
           title="Open Kaizens"
           value={openImprovements}
-          icon={<Lightbulb className="h-5 w-5 text-purple-600" />}
-          colorClass="bg-purple-50"
+          icon={<Lightbulb className="h-5 w-5 text-purple-400" />}
+          colorClass="bg-purple-500/10"
         />
         <KPICard
           title="Total Assemblies"
           value={totalAssemblies}
-          icon={<Layers className="h-5 w-5 text-indigo-600" />}
-          colorClass="bg-indigo-50"
+          icon={<Layers className="h-5 w-5 text-indigo-400" />}
+          colorClass="bg-indigo-500/10"
         />
         <KPICard
           title="Total Spare Parts"
           value={totalSpareParts}
-          icon={<Package className="h-5 w-5 text-slate-600" />}
-          colorClass="bg-slate-50"
+          icon={<Package className="h-5 w-5 text-zinc-400" />}
+          colorClass="bg-zinc-500/10"
         />
         <KPICard
-          title="Critical Spares (0)"
+          title="Critical Spares"
           value={criticalSpareParts}
-          icon={<ShieldAlert className="h-5 w-5 text-rose-600" />}
-          colorClass="bg-rose-50"
+          icon={<ShieldAlert className="h-5 w-5 text-rose-400" />}
+          colorClass="bg-rose-500/10"
         />
       </div>
+
       {/* Rândul 3: Secțiunea Split-Screen (Tabele și Sinteze) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 w-full">
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 w-full">
-          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
-            <Clock className="h-5 w-5 text-amber-500" />
-            <h2 className="text-lg font-bold text-gray-900">
+        <div className="bg-zinc-100/5 dark:bg-zinc-900 p-5 rounded-xl shadow-sm border border-zinc-800 lg:col-span-2 w-full">
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-800">
+            <Clock className="h-5 w-5 text-amber-400" />
+            <h2 className="text-lg font-bold text-zinc-100">
               Active & Open Repairs
             </h2>
           </div>
           {openRepairs.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center text-center">
-              <CheckCircle className="h-10 w-10 text-green-400 mb-2" />
-              <p className="text-sm font-medium text-gray-500">
+              <CheckCircle className="h-10 w-10 text-emerald-500 mb-2" />
+              <p className="text-sm font-medium text-zinc-500">
                 No active repairs recorded.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto w-full -mx-5 px-5">
+            <div className="overflow-x-auto w-full">
               <table className="w-full text-left border-collapse min-w-[500px]">
                 <thead>
-                  <tr className="border-b border-gray-100 text-xs font-semibold uppercase tracking-wider text-gray-400 bg-gray-50/50">
-                    <th className="py-3 px-2">Tool No</th>
-                    <th className="py-3 px-2">Failure Details</th>
-                    <th className="py-3 px-2">Technician</th>
-                    <th className="py-3 px-2 text-right">Status</th>
+                  <tr className="border-b border-zinc-800 text-xs font-bold uppercase tracking-wider text-zinc-500 bg-zinc-950/40">
+                    <th className="py-3 px-3">Tool No</th>
+                    <th className="py-3 px-3">Failure Details</th>
+                    <th className="py-3 px-3">Technician</th>
+                    <th className="py-3 px-3 text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-sm">
+                <tbody className="divide-y divide-zinc-800 text-sm text-zinc-300">
                   {openRepairs.map((repair) => (
                     <tr
                       key={repair.id}
-                      className="hover:bg-gray-50/70 transition-colors"
+                      className="hover:bg-zinc-800/40 transition-colors"
                     >
-                      <td className="py-3 px-2 font-bold text-gray-900">
+                      <td className="py-3 px-3 font-mono font-bold text-zinc-100">
                         {repair.tool_number}
                       </td>
-                      <td className="py-3 px-2 text-gray-600 truncate max-w-[200px]">
+                      <td
+                        className="py-3 px-3 text-zinc-400 truncate max-w-[200px]"
+                        title={repair.failure}
+                      >
                         {repair.failure}
                       </td>
-                      <td className="py-3 px-2 text-gray-500">
+                      <td className="py-3 px-3 text-zinc-500">
                         {repair.technician || "Unassigned"}
                       </td>
-                      <td className="py-3 px-2 text-right">
-                        <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                      <td className="py-3 px-3 text-right">
+                        <span className="inline-flex items-center rounded-md bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-400 border border-amber-500/20">
                           {repair.status}
                         </span>
                       </td>
@@ -438,45 +442,44 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
         </div>
-
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 w-full flex flex-col justify-between">
+        <div className="bg-zinc-100/5 dark:bg-zinc-900 p-5 rounded-xl shadow-sm border border-zinc-800 w-full flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
-              <TrendingUp className="h-5 w-5 text-blue-500" />
-              <h2 className="text-lg font-bold text-gray-900">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-800">
+              <TrendingUp className="h-5 w-5 text-emerald-400" />
+              <h2 className="text-lg font-bold text-zinc-100">
                 Equipment Overview
               </h2>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 text-sm">
-                <span className="text-gray-600 font-medium">
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/40 border border-zinc-800/60 text-sm">
+                <span className="text-zinc-400 font-medium">
                   Total Active Machines
                 </span>
-                <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded shadow-sm border border-gray-100">
+                <span className="font-mono font-bold text-zinc-100 bg-zinc-900 px-2.5 py-0.5 rounded-lg border border-zinc-800">
                   {totalMachines}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 text-sm">
-                <span className="text-gray-600 font-medium">
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/40 border border-zinc-800/60 text-sm">
+                <span className="text-zinc-400 font-medium">
                   Total Assemblies
                 </span>
-                <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded shadow-sm border border-gray-100">
+                <span className="font-mono font-bold text-zinc-100 bg-zinc-900 px-2.5 py-0.5 rounded-lg border border-zinc-800">
                   {totalAssemblies}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 text-sm">
-                <span className="text-gray-600 font-medium">
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/40 border border-zinc-800/60 text-sm">
+                <span className="text-zinc-400 font-medium">
                   Total Spare Parts Lines
                 </span>
-                <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded shadow-sm border border-gray-100">
+                <span className="font-mono font-bold text-zinc-100 bg-zinc-900 px-2.5 py-0.5 rounded-lg border border-zinc-800">
                   {totalSpareParts}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-rose-50 text-sm border border-rose-100">
-                <span className="text-rose-700 font-semibold">
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-rose-500/5 text-sm border border-rose-500/20">
+                <span className="text-rose-400 font-bold">
                   Out of Stock Spares
                 </span>
-                <span className="font-bold text-rose-700 bg-white px-2 py-0.5 rounded shadow-sm border border-rose-200">
+                <span className="font-mono font-bold text-rose-400 bg-zinc-900 px-2.5 py-0.5 rounded-lg border border-rose-500/20">
                   {criticalSpareParts}
                 </span>
               </div>
@@ -487,15 +490,15 @@ export const DashboardPage: React.FC = () => {
 
       {/* Rândul 4: Quick Access & Recent Updates */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3 w-full">
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 w-full">
-          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
-            <ExternalLink className="h-5 w-5 text-purple-500" />
-            <h2 className="text-lg font-bold text-gray-900">
+        <div className="bg-white dark:bg-zinc-900 p-5 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-800 w-full">
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+            <ExternalLink className="h-5 w-5 text-purple-400" />
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Quick Access (Recent Tools)
             </h2>
           </div>
           {quickAccessTools.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-zinc-500 py-4 text-center">
               No recent logs.
             </p>
           ) : (
@@ -504,7 +507,7 @@ export const DashboardPage: React.FC = () => {
                 <Link
                   key={tool}
                   href={`/tools?number=${encodeURIComponent(tool)}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-50 border border-purple-100 text-sm font-bold text-purple-700 hover:bg-purple-100 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-500/5 border border-purple-500/20 text-sm font-bold text-purple-400 hover:bg-purple-500/10 transition-all"
                 >
                   <Wrench className="h-3.5 w-3.5" />
                   {tool}
@@ -514,15 +517,15 @@ export const DashboardPage: React.FC = () => {
           )}
         </div>
 
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 w-full">
-          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
-            <FileText className="h-5 w-5 text-teal-500" />
-            <h2 className="text-lg font-bold text-gray-900">
+        <div className="bg-white dark:bg-zinc-900 p-5 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-800 lg:col-span-2 w-full">
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+            <FileText className="h-5 w-5 text-teal-400" />
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Recent Activity Timeline
             </h2>
           </div>
           {recentActivity.length === 0 ? (
-            <p className="text-sm text-gray-400 py-6 text-center">
+            <p className="text-sm text-zinc-500 py-6 text-center">
               No active history log found.
             </p>
           ) : (
@@ -533,14 +536,14 @@ export const DashboardPage: React.FC = () => {
                     <div className="relative pb-6">
                       {actIdx !== recentActivity.length - 1 ? (
                         <span
-                          className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200"
+                          className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-zinc-100 dark:bg-zinc-800"
                           aria-hidden="true"
                         />
                       ) : null}
                       <div className="relative flex space-x-3">
                         <div>
                           <span
-                            className={`h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white ${activity.type === "Breakdown" ? "bg-red-50 text-red-600" : activity.type === "Repair" ? "bg-amber-50 text-amber-600" : "bg-purple-50 text-purple-600"}`}
+                            className={`h-8 w-8 rounded-full flex items-center justify-center ring-4 ring-white dark:ring-zinc-900 ${activity.type === "Breakdown" ? "bg-rose-500/10 text-rose-400" : activity.type === "Repair" ? "bg-amber-500/10 text-amber-400" : "bg-purple-500/10 text-purple-400"}`}
                           >
                             {activity.type === "Breakdown" ? (
                               <AlertTriangle className="h-4 w-4" />
@@ -552,23 +555,25 @@ export const DashboardPage: React.FC = () => {
                           </span>
                         </div>
                         <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
-                          <div>
-                            <p className="text-sm text-gray-600">
-                              <span className="font-bold text-gray-900">
+                          <div className="min-w-0">
+                            <p className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
+                              <span className="font-bold text-zinc-900 dark:text-zinc-200">
                                 {activity.type}
                               </span>{" "}
                               logged for tool{" "}
                               <Link
                                 href={`/tools?number=${encodeURIComponent(activity.tool_number)}`}
-                                className="font-semibold text-blue-600 hover:underline"
+                                className="font-semibold text-emerald-400 hover:underline"
                               >
                                 {activity.tool_number}
                               </Link>
                               :{" "}
-                              <span className="italic">"{activity.title}"</span>
+                              <span className="italic opacity-80">
+                                "{activity.title}"
+                              </span>
                             </p>
                           </div>
-                          <div className="whitespace-nowrap text-right text-xs text-gray-400">
+                          <div className="whitespace-nowrap text-right text-xs font-medium text-zinc-400 dark:text-zinc-500">
                             {new Date(activity.created_at).toLocaleDateString()}
                           </div>
                         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
 interface SparePart {
@@ -17,63 +17,95 @@ interface SparePart {
 
 export default function SparePartsPage() {
   const [parts, setParts] = useState<SparePart[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInputValue, setSearchInputValue] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingStock, setIsUpdatingStock] = useState<number | null>(null);
-  
-  // LOGICĂ NOUĂ: Gestiune Paginare direct pe Server
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // LOGICĂ PAGINARE
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0); // Păstrează numărul total real (4.843)
+  const [totalCount, setTotalCount] = useState(0);
   const itemsPerPage = 50;
 
-  // Funcție optimizată care aduce doar intervalul de 50 de piese cerut și numără restul
-  async function loadSpareParts() {
-    try {
-      setIsLoading(true);
-      
-      // Calculăm rândurile exacte de pornire și oprire pentru baza de date
-      const from = (currentPage - 1) * itemsPerPage;
-      const to = from + itemsPerPage - 1;
-
-      // Construim interogarea de bază
-      let query = supabase
-        .from("spare_parts")
-        .select("*", { count: "exact" }) // { count: "exact" } ne dă numărul total din spate (4.843)
-        .order("id", { ascending: true })
-        .range(from, to); // Îi cerem serverului doar feliile de 50 de rânduri
-
-      // Dacă utilizatorul caută ceva, lăsăm Supabase să filtreze direct pe server în loc de JS client
-      if (searchTerm.trim() !== "") {
-        const cleanTerm = `%${searchTerm.trim()}%`;
-        query = query.or(`specification.ilike.${cleanTerm},endr_code.ilike.${cleanTerm},tool_number.ilike.${cleanTerm}`);
-      }
-
-      const { data, count, error } = await query;
-
-      if (error) throw error;
-      
-      if (data) setParts(data);
-      if (count !== null) setTotalCount(count); // Salvăm numărul total real din Supabase
-    } catch (error: any) {
-      console.error("Eroare la încărcarea pieselor de schimb:", error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // Declanșăm încărcarea la schimbarea paginii sau la finalizarea căutării
+  // Efect de Debounce pentru căutare
   useEffect(() => {
-    loadSpareParts();
-  }, [currentPage, searchTerm]);
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(searchInputValue);
+      setCurrentPage(1);
+    }, 300);
 
-  // Schimbăm căutarea și resetăm pagina la 1
+    return () => clearTimeout(handler);
+  }, [searchInputValue]);
+
+  // Funcție stabilă pentru încărcarea datelor cu suport de Retry și Error UI
+  const loadSpareParts = useCallback(
+    async (isMounted: { active: boolean }) => {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+
+        const from = (currentPage - 1) * itemsPerPage;
+        const to = from + itemsPerPage - 1;
+
+        let query = supabase
+          .from("spare_parts")
+          .select("*", { count: "exact" })
+          .order("id", { ascending: true })
+          .range(from, to);
+
+        if (debouncedSearchTerm.trim() !== "") {
+          const cleanTerm = `%${debouncedSearchTerm.trim()}%`;
+          query = query.or(
+            `specification.ilike.${cleanTerm},endr_code.ilike.${cleanTerm},tool_number.ilike.${cleanTerm}`,
+          );
+        }
+
+        const { data, count, error } = await query;
+
+        if (error) throw error;
+
+        if (isMounted.active) {
+          if (data) setParts(data as SparePart[]);
+          if (count !== null) setTotalCount(count);
+        }
+      } catch (error: any) {
+        console.error("Eroare la încărcarea pieselor:", error.message);
+        if (isMounted.active) {
+          setErrorMessage(
+            "Nu s-au putut încărca datele din Supabase. Verificați conexiunea la internet.",
+          );
+        }
+      } finally {
+        if (isMounted.active) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [currentPage, debouncedSearchTerm, itemsPerPage],
+  );
+
+  useEffect(() => {
+    const isMounted = { active: true };
+    loadSpareParts(isMounted);
+
+    return () => {
+      isMounted.active = false;
+    };
+  }, [loadSpareParts]);
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
-    setCurrentPage(1);
+    setSearchInputValue(e.target.value);
   };
 
-  // GESTIUNE STOC LIVE (Rămâne neschimbată și complet funcțională)
-  async function handleStockChange(partId: number, currentStock: number, delta: number) {
+  // GESTIUNE STOC LIVE optimizată împotriva acțiunilor repetate
+  async function handleStockChange(
+    partId: number,
+    currentStock: number,
+    delta: number,
+  ) {
+    if (isUpdatingStock !== null) return; // Blochează alte modificări simultane
+
     try {
       setIsUpdatingStock(partId);
       const newStock = Math.max(0, currentStock + delta);
@@ -85,10 +117,10 @@ export default function SparePartsPage() {
 
       if (error) throw error;
 
-      setParts(prevParts => 
-        prevParts.map(part => 
-          part.id === partId ? { ...part, stock_quantity: newStock } : part
-        )
+      setParts((prevParts) =>
+        prevParts.map((part) =>
+          part.id === partId ? { ...part, stock_quantity: newStock } : part,
+        ),
       );
     } catch (error: any) {
       alert("Eroare la actualizarea stocului: " + error.message);
@@ -97,30 +129,57 @@ export default function SparePartsPage() {
     }
   }
 
-  // Variabile de calcul simplificate (deoarece intervalul vine calculat direct de pe server)
   const indexOfFirstItem = (currentPage - 1) * itemsPerPage;
   const totalPages = Math.ceil(totalCount / itemsPerPage);
-  return (
-    <div className="space-y-8">
-      {/* Antet Pagina */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-          Management Piese de Schimb
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Afișarea celor {totalCount.toLocaleString("ro-RO")} componente stocate în tabela ta din Supabase.
-        </p>
-      </div>
 
-      {/* Bară de căutare */}
-      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-        <input
-          type="text"
-          placeholder="Caută după Specificație, Cod ENDR sau Tool Number..."
-          className="w-full md:w-1/3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-blue-500"
-          value={searchTerm}
-          onChange={handleSearchChange}
-        />
+  return (
+    <div className="space-y-8 max-w-[1600px] mx-auto p-4 md:p-6">
+      {/* Antet Pagina */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Management Piese de Schimb
+          </h1>
+          <p className="text-gray-500 mt-1 text-sm">
+            Afișarea celor{" "}
+            <strong className="text-slate-800">
+              {totalCount.toLocaleString("ro-RO")}
+            </strong>{" "}
+            componente din baza de date.
+          </p>
+        </div>
+      </div>
+      {/* Bară de căutare și Alerte */}
+      <div className="space-y-4">
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Caută după Specificație, Cod ENDR sau Tool Number..."
+            className="w-full md:w-1/3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            value={searchInputValue}
+            onChange={handleSearchChange}
+          />
+          {searchInputValue && (
+            <button
+              onClick={() => setSearchInputValue("")}
+              className="text-xs text-gray-400 hover:text-gray-600 font-medium underline"
+            >
+              Șterge
+            </button>
+          )}
+        </div>
+
+        {errorMessage && (
+          <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-sm flex items-center justify-between">
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => loadSpareParts({ active: true })}
+              className="bg-white border border-rose-200 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors"
+            >
+              Reîncearcă
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tabel Date */}
@@ -140,68 +199,96 @@ export default function SparePartsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm text-slate-700">
               {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-gray-400">
-                    Se încarcă intervalul de piese din Supabase...
-                  </td>
-                </tr>
+                Array.from({ length: 5 }).map((_, idx) => (
+                  <tr key={idx} className="animate-pulse">
+                    <td className="py-4 px-6">
+                      <div className="h-4 bg-slate-100 rounded w-16"></div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="h-4 bg-slate-100 rounded w-48"></div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="h-4 bg-slate-100 rounded w-24"></div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="h-4 bg-slate-100 rounded w-12"></div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="h-4 bg-slate-100 rounded w-20"></div>
+                    </td>
+                    <td className="py-4 px-6 flex justify-center">
+                      <div className="h-7 bg-slate-100 rounded-lg w-28"></div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="h-4 bg-slate-100 rounded w-16"></div>
+                    </td>
+                  </tr>
+                ))
               ) : parts.length > 0 ? (
-                /* MODIFICAT: Mapăm direct matricea parts returnată curat de server */
-                parts.map((part: any) => {
+                parts.map((part: SparePart) => {
                   const currentQty = part.stock_quantity || 0;
                   const isPending = isUpdatingStock === part.id;
 
                   return (
-                    <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr
+                      key={part.id}
+                      className="hover:bg-slate-50/50 transition-colors"
+                    >
                       <td className="py-4 px-6 font-mono font-semibold text-xs text-blue-600">
                         {part.endr_code || "FĂRĂ COD"}
                       </td>
-                      <td className="py-4 px-6 font-medium text-slate-900 max-w-xs truncate" title={part.specification || ""}>
+                      <td
+                        className="py-4 px-6 font-medium text-slate-900 max-w-xs truncate"
+                        title={part.specification || ""}
+                      >
                         {part.specification || "-"}
                       </td>
                       <td className="py-4 px-6 text-xs text-gray-600 font-mono">
                         {part.tool_number || "Universală"}
                       </td>
                       <td className="py-4 px-6 font-mono text-xs text-gray-500">
-                        {part.kardex_shelf !== null ? `Raft ${part.kardex_shelf}` : "-"}
+                        {part.kardex_shelf !== null
+                          ? `Raft ${part.kardex_shelf}`
+                          : "-"}
                       </td>
                       <td className="py-4 px-6 text-xs">
                         <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-medium">
                           {part.stock_type || "Nespecificat"}
                         </span>
                       </td>
-                      
-                      {/* Celulă interactivă pentru controlul stocului live */}
                       <td className="py-4 px-6">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            onClick={() => handleStockChange(part.id, currentQty, -1)}
-                            disabled={isPending || currentQty <= 0}
-                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 shadow-sm disabled:opacity-40"
-                            title="Scade o piesă din stoc"
+                            onClick={() =>
+                              handleStockChange(part.id, currentQty, -1)
+                            }
+                            disabled={
+                              isPending ||
+                              currentQty <= 0 ||
+                              isUpdatingStock !== null
+                            }
+                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 disabled:opacity-40"
                           >
                             -
                           </button>
-                          
-                          <span className={`min-w-[65px] text-center font-mono font-black text-xs px-2 py-1 rounded ${
-                            currentQty > 0 ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700 animate-pulse"
-                          }`}>
-                            {isPending ? "..." : `${currentQty} buc`}
+                          <span
+                            className={`min-w-[75px] text-center font-mono font-bold text-xs px-2 py-1 rounded ${currentQty > 0 ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700 animate-pulse"}`}
+                          >
+                            {isPending ? "Salvare..." : `${currentQty} buc`}
                           </span>
-
                           <button
                             type="button"
-                            onClick={() => handleStockChange(part.id, currentQty, 1)}
-                            disabled={isPending}
-                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 shadow-sm disabled:opacity-40"
-                            title="Adaugă o piesă în stoc"
+                            onClick={() =>
+                              handleStockChange(part.id, currentQty, 1)
+                            }
+                            disabled={isPending || isUpdatingStock !== null}
+                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 rounded-lg font-black text-sm transition-colors border border-slate-200/60 disabled:opacity-40"
                           >
                             +
                           </button>
                         </div>
                       </td>
-
                       <td className="py-4 px-6 text-xs text-gray-500">
                         {part.st_ns || "-"}
                       </td>
@@ -210,8 +297,18 @@ export default function SparePartsPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-gray-400">
-                    Nicio piesă de schimb găsită în acest interval sau conform căutării.
+                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                    <p className="text-sm font-medium">
+                      Nicio piesă de schimb găsită pentru criteriile selectate.
+                    </p>
+                    {debouncedSearchTerm && (
+                      <button
+                        onClick={() => setSearchInputValue("")}
+                        className="mt-2 text-xs text-blue-500 hover:underline font-semibold"
+                      >
+                        Resetează căutarea
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}
@@ -223,15 +320,16 @@ export default function SparePartsPage() {
         {!isLoading && totalPages > 1 && (
           <div className="bg-slate-50 border-t border-gray-100 px-6 py-4 flex items-center justify-between">
             <span className="text-xs text-gray-500">
-              {/* MODIFICAT: Calcul de interval corelat direct cu totalCount global din Supabase */}
-              Se afișează reperele {indexOfFirstItem + 1} - {Math.min(indexOfFirstItem + itemsPerPage, totalCount)} din {totalCount} totale
+              Se afișează reperele {indexOfFirstItem + 1} -{" "}
+              {Math.min(indexOfFirstItem + itemsPerPage, totalCount)} din{" "}
+              {totalCount} totale
             </span>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
+                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
               >
                 Anterior
               </button>
@@ -240,9 +338,11 @@ export default function SparePartsPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                }
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
+                className="px-3 py-1.5 text-xs font-medium border rounded bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
               >
                 Următor
               </button>
