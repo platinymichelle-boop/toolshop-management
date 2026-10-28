@@ -669,7 +669,7 @@ function ToolPageContent() {
                       <th className="p-3">Specification</th>
                       <th className="p-3">Manufacturer</th>
                       <th className="p-3 text-center">Stock</th>
-                      <th className="p-3 text-right">Actions</th>
+                      <th className="p-3 text-right">Tools</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -681,54 +681,98 @@ function ToolPageContent() {
                         <td className="p-3 font-mono font-bold">
                           {part.endr_code}
                         </td>
+
                         <td className="p-3 font-semibold">
                           {part.specification || "-"}
                         </td>
+
                         <td className="p-3 text-slate-600">
                           {part.manufacturer || "Unknown"}
                         </td>
+
                         <td className="p-3 text-center">
                           <span className="px-2 py-1 bg-slate-100 rounded-lg text-xs font-mono">
                             {part.stock_quantity} buc
                           </span>
                         </td>
-                        <td className="p-3 text-right flex justify-end gap-2">
-                          <button
-                            onClick={() =>
-                              window.open(
-                                `https://google.com{part.endr_code}`,
-                                "_blank",
-                              )
-                            }
-                            className="p-1 border rounded"
-                          >
-                            📋
-                          </button>
-                          <div className="inline-flex border rounded bg-white p-0.5 shadow-sm">
+
+                        <td className="p-3 text-right">
+                          <div className="flex justify-end gap-2 flex-wrap">
+                            {part.datasheet_url && (
+                              <button
+                                onClick={() =>
+                                  window.open(part.datasheet_url, "_blank")
+                                }
+                                className="px-2 py-1 border rounded text-xs bg-blue-50 hover:bg-blue-100"
+                                title="Open Datasheet"
+                              >
+                                📄 Datasheet
+                              </button>
+                            )}
+
+                            {part.supplier_url && (
+                              <button
+                                onClick={() =>
+                                  window.open(part.supplier_url, "_blank")
+                                }
+                                className="px-2 py-1 border rounded text-xs bg-green-50 hover:bg-green-100"
+                                title="Open Supplier Page"
+                              >
+                                🛒 Supplier
+                              </button>
+                            )}
+
                             <button
                               onClick={() =>
-                                handleStockChange(
-                                  part.id,
-                                  part.stock_quantity,
-                                  -1,
+                                window.open(
+                                  `https://www.google.com/search?q=${encodeURIComponent(
+                                    [
+                                      part.manufacturer,
+                                      part.manufacturer_part_number,
+                                      part.part_number,
+                                      part.specification,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" "),
+                                  )}`,
+                                  "_blank",
                                 )
                               }
-                              className="px-2 text-xs font-bold"
+                              className="px-2 py-1 border rounded text-xs bg-slate-50 hover:bg-slate-100"
+                              title="Find Product"
                             >
-                              -1
+                              🔍 Find Product
                             </button>
-                            <button
-                              onClick={() =>
-                                handleStockChange(
-                                  part.id,
-                                  part.stock_quantity,
-                                  1,
-                                )
-                              }
-                              className="px-2 text-xs font-bold"
-                            >
-                              +1
-                            </button>
+
+                            <div className="inline-flex border rounded bg-white p-0.5 shadow-sm">
+                              <button
+                                onClick={() =>
+                                  handleStockChange(
+                                    part.id,
+                                    part.stock_quantity,
+                                    -1,
+                                  )
+                                }
+                                disabled={isUpdatingStock === part.id}
+                                className="px-2 text-xs font-bold hover:bg-red-50"
+                              >
+                                -1
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  handleStockChange(
+                                    part.id,
+                                    part.stock_quantity,
+                                    1,
+                                  )
+                                }
+                                disabled={isUpdatingStock === part.id}
+                                className="px-2 text-xs font-bold hover:bg-green-50"
+                              >
+                                +1
+                              </button>
+                            </div>
                           </div>
                         </td>
                       </tr>

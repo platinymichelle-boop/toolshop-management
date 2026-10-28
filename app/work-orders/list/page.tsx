@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
@@ -24,12 +24,19 @@ interface WorkOrder {
   actions_count: number;
 }
 
-type FilterStatus = "ALL" | "OPEN" | "IN PROGRESS" | "COMPLETED" | "CANCELLED";
+type FilterStatus =
+  | "ALL"
+  | "OPEN"
+  | "IN PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "OVERDUE";
 
 export default function WorkOrdersListPage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
+  const [weekFilter, setWeekFilter] = useState<string>("THIS_WEEK");
 
   useEffect(() => {
     async function loadWorkOrders() {
@@ -37,7 +44,7 @@ export default function WorkOrdersListPage() {
         const { data, error } = await supabase
           .from("work_orders")
           .select("*")
-          .order("created_at", { ascending: false });
+          .order("scheduled_date", { ascending: true });
 
         if (error) throw error;
         setWorkOrders(data || []);
@@ -50,9 +57,29 @@ export default function WorkOrdersListPage() {
     loadWorkOrders();
   }, []);
 
-  // Helper funcție pentru stilizarea badge-urilor de status
-  const getStatusClass = (status: string) => {
-    const normalized = status?.toUpperCase() || "";
+  const isOverdue = (wo: WorkOrder) => {
+    if (!wo.scheduled_date || wo.status?.toUpperCase() !== "OPEN") return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const cleanDate = wo.scheduled_date.split("T")[0];
+    const parts = cleanDate.split("-");
+    if (parts.length !== 3) return false;
+    const scheduled = new Date(
+      parseInt(parts[0], 10),
+      parseInt(parts[1], 10) - 1,
+      parseInt(parts[2], 10),
+      12,
+      0,
+      0,
+    );
+
+    return scheduled < today;
+  };
+
+  const getStatusClass = (wo: WorkOrder) => {
+    if (isOverdue(wo)) return "bg-red-100 text-red-700";
+    const normalized = wo.status?.toUpperCase() || "";
     switch (normalized) {
       case "OPEN":
         return "bg-blue-100 text-blue-700";
@@ -66,27 +93,119 @@ export default function WorkOrdersListPage() {
         return "bg-slate-100 text-slate-700";
     }
   };
+  const dateRanges = useMemo(() => {
+    const today = new Date();
+    const currentDay = today.getDay();
+    const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
 
-  // Calculare dinamică KPI-uri și numărători filtre direct din starea brută
-  const counts = {
-    ALL: workOrders.length,
-    OPEN: workOrders.filter((wo) => wo.status?.toUpperCase() === "OPEN").length,
-    "IN PROGRESS": workOrders.filter(
-      (wo) => wo.status?.toUpperCase() === "IN PROGRESS",
-    ).length,
-    COMPLETED: workOrders.filter(
-      (wo) => wo.status?.toUpperCase() === "COMPLETED",
-    ).length,
-    CANCELLED: workOrders.filter(
-      (wo) => wo.status?.toUpperCase() === "CANCELLED",
-    ).length,
-  };
+    const startThis = new Date(today);
+    startThis.setDate(today.getDate() + distanceToMonday);
+    startThis.setHours(0, 0, 0, 0);
+    const endThis = new Date(startThis);
+    endThis.setDate(startThis.getDate() + 6);
+    endThis.setHours(23, 59, 59, 999);
 
-  // Logica de filtrare a ordinelor de lucru
-  const filteredWorkOrders =
-    statusFilter === "ALL"
-      ? workOrders
-      : workOrders.filter((wo) => wo.status?.toUpperCase() === statusFilter);
+    const startLast = new Date(startThis);
+    startLast.setDate(startThis.getDate() - 7);
+    const endLast = new Date(endThis);
+    endLast.setDate(endThis.getDate() - 7);
+
+    const startNext = new Date(startThis);
+    startNext.setDate(startThis.getDate() + 7);
+    const endNext = new Date(endThis);
+    endNext.setDate(endThis.getDate() + 7);
+
+    const formatDateStr = (d: Date, includeYear = false) => {
+      const day = String(d.getDate()).padStart(2, "0");
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const month = months[d.getMonth()];
+      return includeYear
+        ? `${day} ${month} ${d.getFullYear()}`
+        : `${day} ${month}`;
+    };
+
+    return {
+      LAST_WEEK: {
+        start: startLast,
+        end: endLast,
+        label: `Last Week (${formatDateStr(startLast)} - ${formatDateStr(endLast)})`,
+        period: `${formatDateStr(startLast, true)} - ${formatDateStr(endLast, true)}`,
+      },
+      THIS_WEEK: {
+        start: startThis,
+        end: endThis,
+        label: `This Week (${formatDateStr(startThis)} - ${formatDateStr(endThis)})`,
+        period: `${formatDateStr(startThis, true)} - ${formatDateStr(endThis, true)}`,
+      },
+      NEXT_WEEK: {
+        start: startNext,
+        end: endNext,
+        label: `Next Week (${formatDateStr(startNext)} - ${formatDateStr(endNext)})`,
+        period: `${formatDateStr(startNext, true)} - ${formatDateStr(endNext, true)}`,
+      },
+    };
+  }, []);
+
+  const timeFilteredWorkOrders = useMemo(() => {
+    const activeRange = dateRanges[weekFilter as keyof typeof dateRanges];
+    if (!activeRange) return [];
+    return workOrders.filter((wo) => {
+      if (!wo.scheduled_date) return false;
+      const cleanDate = wo.scheduled_date.split("T")[0];
+      const parts = cleanDate.split("-");
+      if (parts.length !== 3) return false;
+      const scheduled = new Date(
+        parseInt(parts[0], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[2], 10),
+        12,
+        0,
+        0,
+      );
+      return scheduled >= activeRange.start && scheduled <= activeRange.end;
+    });
+  }, [workOrders, weekFilter, dateRanges]);
+
+  const counts = useMemo(() => {
+    return {
+      ALL: timeFilteredWorkOrders.length,
+      OPEN: timeFilteredWorkOrders.filter(
+        (wo) => wo.status?.toUpperCase() === "OPEN" && !isOverdue(wo),
+      ).length,
+      "IN PROGRESS": timeFilteredWorkOrders.filter(
+        (wo) => wo.status?.toUpperCase() === "IN PROGRESS",
+      ).length,
+      COMPLETED: timeFilteredWorkOrders.filter(
+        (wo) => wo.status?.toUpperCase() === "COMPLETED",
+      ).length,
+      CANCELLED: timeFilteredWorkOrders.filter(
+        (wo) => wo.status?.toUpperCase() === "CANCELLED",
+      ).length,
+      OVERDUE: timeFilteredWorkOrders.filter((wo) => isOverdue(wo)).length,
+    };
+  }, [timeFilteredWorkOrders]);
+
+  const finalFilteredWorkOrders = useMemo(() => {
+    if (statusFilter === "ALL") return timeFilteredWorkOrders;
+    if (statusFilter === "OVERDUE")
+      return timeFilteredWorkOrders.filter((wo) => isOverdue(wo));
+    return timeFilteredWorkOrders.filter(
+      (wo) => wo.status?.toUpperCase() === statusFilter && !isOverdue(wo),
+    );
+  }, [timeFilteredWorkOrders, statusFilter]);
 
   if (isLoading) {
     return (
@@ -104,10 +223,13 @@ export default function WorkOrdersListPage() {
             Work Orders History
           </h1>
           <p className="text-xs md:text-sm text-slate-500 mt-1">
-            Manage and track preventive maintenance schedules.
+            Period: {dateRanges[weekFilter as keyof typeof dateRanges]?.period}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Overdue = OPEN Work Orders with scheduled date earlier than today.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto items-center">
           <Link
             href="/preventive-maintenance"
             className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 md:px-4 py-2 bg-white border border-slate-200 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors text-xs md:text-sm shadow-sm"
@@ -115,6 +237,16 @@ export default function WorkOrdersListPage() {
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Dashboard</span>
           </Link>
+
+          <select
+            value={weekFilter}
+            onChange={(e) => setWeekFilter(e.target.value)}
+            className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-500"
+          >
+            <option value="LAST_WEEK">{dateRanges.LAST_WEEK.label}</option>
+            <option value="THIS_WEEK">{dateRanges.THIS_WEEK.label}</option>
+            <option value="NEXT_WEEK">{dateRanges.NEXT_WEEK.label}</option>
+          </select>
 
           <Link
             href="/work-orders"
@@ -126,65 +258,75 @@ export default function WorkOrdersListPage() {
         </div>
       </div>
 
-      {/* CARDURI KPI (2 coloane pe mobil, 4 pe desktop) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* TOTAL CARD */}
-        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+      {/* CARDURI KPI (Adaptate pentru 5 elemente) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="bg-white p-4 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               Total WO
             </span>
-            <span className="text-2xl md:text-3xl font-bold text-slate-800 mt-1 block">
+            <span className="text-2xl font-bold text-slate-800 mt-1 block">
               {counts.ALL}
             </span>
           </div>
-          <div className="p-2.5 bg-slate-50 rounded-lg text-slate-500 hidden sm:block">
-            <ClipboardList className="w-5 h-5" />
+          <div className="p-2 bg-slate-50 rounded-lg text-slate-500 hidden sm:block">
+            <ClipboardList className="w-4 h-4" />
           </div>
         </div>
 
-        {/* OPEN CARD */}
-        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               Open
             </span>
-            <span className="text-2xl md:text-3xl font-bold text-blue-600 mt-1 block">
+            <span className="text-2xl font-bold text-blue-600 mt-1 block">
               {counts.OPEN}
             </span>
           </div>
-          <div className="p-2.5 bg-blue-50 rounded-lg text-blue-500 hidden sm:block">
-            <AlertCircle className="w-5 h-5" />
+          <div className="p-2 bg-blue-50 rounded-lg text-blue-500 hidden sm:block">
+            <AlertCircle className="w-4 h-4" />
           </div>
         </div>
 
-        {/* IN PROGRESS CARD */}
-        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+          <div>
+            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Overdue WO
+            </span>
+            <span className="text-2xl font-bold text-red-600 mt-1 block">
+              {counts.OVERDUE}
+            </span>
+          </div>
+          <div className="p-2 bg-red-50 rounded-lg text-red-500 hidden sm:block">
+            <XCircle className="w-4 h-4" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               In Progress
             </span>
-            <span className="text-2xl md:text-3xl font-bold text-amber-600 mt-1 block">
+            <span className="text-2xl font-bold text-amber-600 mt-1 block">
               {counts["IN PROGRESS"]}
             </span>
           </div>
-          <div className="p-2.5 bg-amber-50 rounded-lg text-amber-500 hidden sm:block">
-            <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <div className="p-2 bg-amber-50 rounded-lg text-amber-500 hidden sm:block">
+            <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
           </div>
         </div>
 
-        {/* COMPLETED CARD */}
-        <div className="bg-white p-4 md:p-5 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 border border-slate-100 rounded-xl shadow-sm flex items-center justify-between">
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               Completed
             </span>
-            <span className="text-2xl md:text-3xl font-bold text-green-600 mt-1 block">
+            <span className="text-2xl font-bold text-green-600 mt-1 block">
               {counts.COMPLETED}
             </span>
           </div>
-          <div className="p-2.5 bg-green-50 rounded-lg text-green-500 hidden sm:block">
-            <CheckCircle2 className="w-5 h-5" />
+          <div className="p-2 bg-green-50 rounded-lg text-green-500 hidden sm:block">
+            <CheckCircle2 className="w-4 h-4" />
           </div>
         </div>
       </div>
@@ -195,6 +337,7 @@ export default function WorkOrdersListPage() {
           [
             "ALL",
             "OPEN",
+            "OVERDUE",
             "IN PROGRESS",
             "COMPLETED",
             "CANCELLED",
@@ -213,11 +356,7 @@ export default function WorkOrdersListPage() {
             >
               <span>{status}</span>
               <span
-                className={`inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-md ${
-                  isActive
-                    ? "bg-blue-700 text-white"
-                    : "bg-slate-100 text-slate-500"
-                }`}
+                className={`inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-md ${isActive ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-500"}`}
               >
                 {counts[status]}
               </span>
@@ -226,7 +365,7 @@ export default function WorkOrdersListPage() {
         })}
       </div>
 
-      {/* CONTANIER TABEL CU SCROLL INTACT PENTRU MOBIL */}
+      {/* CONTAINER TABEL */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm select-none">
         <table className="w-full text-left border-collapse min-w-[800px]">
           <thead>
@@ -241,17 +380,20 @@ export default function WorkOrdersListPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs md:text-sm whitespace-nowrap">
-            {filteredWorkOrders.length === 0 ? (
+            {finalFilteredWorkOrders.length === 0 ? (
               <tr>
                 <td
                   colSpan={7}
-                  className="p-12 text-center text-slate-400 font-medium italic"
+                  className="p-12 text-center text-slate-500 font-medium italic bg-slate-50/50"
                 >
-                  No work orders found matching the "{statusFilter}" filter.
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <ClipboardList className="w-8 h-8 text-slate-300" />
+                    <span>No Work Orders found for selected period.</span>
+                  </div>
                 </td>
               </tr>
             ) : (
-              filteredWorkOrders.map((wo) => (
+              finalFilteredWorkOrders.map((wo) => (
                 <tr
                   key={wo.id}
                   className="hover:bg-slate-50/50 transition-colors"
@@ -263,13 +405,15 @@ export default function WorkOrdersListPage() {
                     {wo.tool_number || wo.tool_id}
                   </td>
                   <td className="p-4 text-slate-600">
-                    {new Date(wo.scheduled_date).toLocaleDateString("ro-RO")}
+                    {wo.scheduled_date
+                      ? new Date(wo.scheduled_date).toLocaleDateString("ro-RO")
+                      : "-"}
                   </td>
                   <td className="p-4">
                     <span
-                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusClass(wo.status)}`}
+                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusClass(wo)}`}
                     >
-                      {wo.status}
+                      {isOverdue(wo) ? "OVERDUE" : wo.status}
                     </span>
                   </td>
                   <td className="p-4 text-slate-600 font-medium">

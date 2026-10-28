@@ -278,20 +278,65 @@ export default function WorkOrderDetailsPage() {
 
     try {
       setIsUpdating(true);
+
+      const completionDate = new Date();
+      const completionIso = completionDate.toISOString();
+
       const { error } = await supabase
         .from("work_orders")
         .update({
           status: "COMPLETED",
-          completed_at: new Date().toISOString(),
+          completed_at: completionIso,
           completed_by: completedBy.trim(),
           completion_comments: completionComments.trim(),
         })
         .eq("id", workOrder.id);
 
       if (error) throw error;
+
+      // Actualizare PM Tasks asociate
+      const pmTaskIds = actions
+        .map((action) => action.preventive_action_id)
+        .filter(Boolean);
+
+      if (pmTaskIds.length > 0) {
+        const { data: pmTasks, error: pmTasksError } = await supabase
+          .from("pm_tasks")
+          .select("id, frequency, days")
+          .in("id", pmTaskIds);
+
+        if (pmTasksError) throw pmTasksError;
+
+        for (const task of pmTasks || []) {
+          let nextDueAt: string | null = null;
+          let nextStatus = "OPEN";
+
+          if (task.frequency === "ON_DEMAND") {
+            nextStatus = "COMPLETED";
+            nextDueAt = null;
+          } else if (task.days) {
+            const nextDate = new Date(completionDate);
+            nextDate.setDate(nextDate.getDate() + Number(task.days));
+            nextDueAt = nextDate.toISOString();
+          }
+
+          const { error: updateTaskError } = await supabase
+            .from("pm_tasks")
+            .update({
+              last_completed_at: completionIso,
+              next_due_at: nextDueAt,
+              status: nextStatus,
+            })
+            .eq("id", task.id);
+
+          if (updateTaskError) throw updateTaskError;
+        }
+      }
+
       alert(
         `Work Order ${workOrder.wo_number} closed successfully as COMPLETED.`,
       );
+
       await loadWorkOrderData();
     } catch (err: any) {
       alert(err.message || "Failed to complete the Work Order");

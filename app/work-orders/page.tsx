@@ -244,6 +244,8 @@ export default function WorkOrdersPage() {
           tool_number: selectedTool,
           tool_name: `Tool ${selectedTool}`,
           scheduled_date: plannedDate || new Date().toISOString().split("T")[0],
+          priority: priority,
+          team_code: shifts.find((s) => s.id === selectedShift)?.teamCode,
           status: "OPEN",
           created_by: selectedShift,
           actions_count: selectedWorkOrderActions.length,

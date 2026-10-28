@@ -1,4 +1,3 @@
-// PARTEA 1 DIN 6
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -59,37 +58,22 @@ interface PMTask {
 interface WorkOrder {
   id: string;
   status: string;
+  scheduled_date: string | null;
 }
 
-const calculateStatus = (nextDueAt: string | null): PMTask["status"] => {
-  if (!nextDueAt) return "OPEN";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueData = new Date(nextDueAt);
-  dueData.setHours(0, 0, 0, 0);
-
-  if (dueData < today) return "OVERDUE";
-  const sevenDaysFromNow = new Date();
-  sevenDaysFromNow.setDate(today.getDate() + 7);
-  sevenDaysFromNow.setHours(23, 59, 59, 999);
-
-  if (dueData <= sevenDaysFromNow) return "DUE_SOON";
-  return "OPEN";
-};
-// PARTEA 2 DIN 6
 export default function PreventiveMaintenanceDashboard() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [weekFilter, setWeekFilter] = useState<string>("THIS_WEEK");
 
   const fetchTasks = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Extragere exclusivă din tabela work_orders pentru generarea panoului de analiză
       const { data: woData, error: woError } = await supabase
         .from("work_orders")
-        .select("id, status");
+        .select("id, status, scheduled_date");
       if (woError) throw woError;
 
       setWorkOrders(woData || []);
@@ -103,24 +87,109 @@ export default function PreventiveMaintenanceDashboard() {
   useEffect(() => {
     fetchTasks();
   }, []);
-  // PARTEA 3 DIN 6
+  const dateRanges = useMemo(() => {
+    const today = new Date();
+    const currentDay = today.getDay();
+    const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+
+    const startThis = new Date(today);
+    startThis.setDate(today.getDate() + distanceToMonday);
+    startThis.setHours(0, 0, 0, 0);
+    const endThis = new Date(startThis);
+    endThis.setDate(startThis.getDate() + 6);
+    endThis.setHours(23, 59, 59, 999);
+
+    const startLast = new Date(startThis);
+    startLast.setDate(startThis.getDate() - 7);
+    const endLast = new Date(endThis);
+    endLast.setDate(endThis.getDate() - 7);
+
+    const startNext = new Date(startThis);
+    startNext.setDate(startThis.getDate() + 7);
+    const endNext = new Date(endThis);
+    endNext.setDate(endThis.getDate() + 7);
+
+    const formatDateStr = (d: Date, includeYear = false) => {
+      const day = String(d.getDate()).padStart(2, "0");
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const month = months[d.getMonth()];
+      return includeYear
+        ? `${day} ${month} ${d.getFullYear()}`
+        : `${day} ${month}`;
+    };
+
+    return {
+      LAST_WEEK: {
+        start: startLast,
+        end: endLast,
+        label: `Last Week (${formatDateStr(startLast)} - ${formatDateStr(endLast)})`,
+        period: `${formatDateStr(startLast, true)} - ${formatDateStr(endLast, true)}`,
+      },
+      THIS_WEEK: {
+        start: startThis,
+        end: endThis,
+        label: `This Week (${formatDateStr(startThis)} - ${formatDateStr(endThis)})`,
+        period: `${formatDateStr(startThis, true)} - ${formatDateStr(endThis, true)}`,
+      },
+      NEXT_WEEK: {
+        start: startNext,
+        end: endNext,
+        label: `Next Week (${formatDateStr(startNext)} - ${formatDateStr(endNext)})`,
+        period: `${formatDateStr(startNext, true)} - ${formatDateStr(endNext, true)}`,
+      },
+    };
+  }, []);
+
+  const filteredWorkOrders = useMemo(() => {
+    const activeRange = dateRanges[weekFilter as keyof typeof dateRanges];
+    if (!activeRange) return [];
+
+    return workOrders.filter((wo) => {
+      if (!wo.scheduled_date) return false;
+
+      const dateParts = wo.scheduled_date.split("T")[0].split("-");
+      if (dateParts.length !== 3) return false;
+
+      const scheduled = new Date(
+        parseInt(dateParts[0], 10),
+        parseInt(dateParts[1], 10) - 1,
+        parseInt(dateParts[2], 10),
+        12,
+        0,
+        0,
+      );
+
+      return scheduled >= activeRange.start && scheduled <= activeRange.end;
+    });
+  }, [workOrders, weekFilter, dateRanges]);
+
   const metrics = useMemo(() => {
-    const total = workOrders.length;
-    const open = workOrders.filter(
+    const total = filteredWorkOrders.length;
+    const open = filteredWorkOrders.filter(
       (wo) => String(wo.status).toUpperCase() === "OPEN",
     ).length;
-    const inProgress = workOrders.filter(
+    const inProgress = filteredWorkOrders.filter(
       (wo) => String(wo.status).toUpperCase() === "IN PROGRESS",
     ).length;
-    const completed = workOrders.filter(
+    const completed = filteredWorkOrders.filter(
       (wo) => String(wo.status).toUpperCase() === "COMPLETED",
     ).length;
 
-    // WO Completion Rate % -> (COMPLETED / TOTAL) * 100
     const completionRate =
       total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    // Maintenance Health Score formula -> (COMPLETED + IN PROGRESS * 0.5) / TOTAL * 100
     const healthScore =
       total > 0
         ? Math.round(((completed + inProgress * 0.5) / total) * 100)
@@ -163,8 +232,28 @@ export default function PreventiveMaintenanceDashboard() {
       healthBadge,
       chartData,
     };
-  }, [workOrders]);
-  // PARTEA 4 DIN 6
+  }, [filteredWorkOrders]);
+  // Corecție inline pentru stabilizarea parsării datelor (Timezone-safe)
+  const safeFilteredWOs = useMemo(() => {
+    const activeRange = dateRanges[weekFilter as keyof typeof dateRanges];
+    if (!activeRange) return [];
+    return workOrders.filter((wo) => {
+      if (!wo.scheduled_date) return false;
+      const cleanDate = wo.scheduled_date.split("T")[0];
+      const parts = cleanDate.split("-");
+      if (parts.length !== 3) return false;
+      const scheduled = new Date(
+        parseInt(parts[0], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[2], 10),
+        12,
+        0,
+        0,
+      );
+      return scheduled >= activeRange.start && scheduled <= activeRange.end;
+    });
+  }, [workOrders, weekFilter, dateRanges]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 bg-slate-50 min-h-screen text-slate-800">
       {error && (
@@ -179,12 +268,10 @@ export default function PreventiveMaintenanceDashboard() {
             Preventive Maintenance Dashboard
           </h1>
           <p className="text-slate-500 mt-1">
-            Analiza performanței de execuție bazată exclusiv pe fluxul de lucru
-            Work Orders.
+            Period: {dateRanges[weekFilter as keyof typeof dateRanges]?.period}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          {/* Reintegrarea butonului de redirecționare înapoi către Work Orders */}
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto items-center">
           <Link
             href="/work-orders/list"
             className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg shadow-sm transition-colors text-sm font-medium"
@@ -192,7 +279,15 @@ export default function PreventiveMaintenanceDashboard() {
             <ArrowRight className="w-4 h-4" />
             Work Orders
           </Link>
-
+          <select
+            value={weekFilter}
+            onChange={(e) => setWeekFilter(e.target.value)}
+            className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-500"
+          >
+            <option value="LAST_WEEK">{dateRanges.LAST_WEEK.label}</option>
+            <option value="THIS_WEEK">{dateRanges.THIS_WEEK.label}</option>
+            <option value="NEXT_WEEK">{dateRanges.NEXT_WEEK.label}</option>
+          </select>
           <button
             onClick={fetchTasks}
             disabled={loading}
@@ -203,76 +298,69 @@ export default function PreventiveMaintenanceDashboard() {
           </button>
         </div>
       </div>
-      {/* Primul rând de carduri KPI calculate din work_orders */}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-slate-100 text-slate-600 rounded-lg">
-            <ClipboardList className="w-6 h-6" />
+        {[
+          {
+            label: "Total Work Orders",
+            val: metrics.total,
+            icon: <ClipboardList className="w-6 h-6" />,
+            bg: "bg-slate-100 text-slate-600",
+          },
+          {
+            label: "Open Work Orders",
+            val: metrics.open,
+            icon: <Clock className="w-6 h-6" />,
+            bg: "bg-blue-50 text-blue-600",
+          },
+          {
+            label: "In Progress WOs",
+            val: metrics.inProgress,
+            icon: <Hourglass className="w-6 h-6" />,
+            bg: "bg-amber-50 text-amber-600",
+          },
+          {
+            label: "WO Completion Rate",
+            val: `${metrics.completionRate}%`,
+            icon: <Percent className="w-6 h-6" />,
+            bg: "bg-emerald-50 text-emerald-600",
+          },
+        ].map((c, i) => (
+          <div
+            key={i}
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4"
+          >
+            <div className={`p-3 rounded-lg ${c.bg}`}>{c.icon}</div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-500">{c.label}</p>
+              {loading ? (
+                <div className="h-7 bg-slate-200 rounded animate-pulse w-16 mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-slate-900">{c.val}</p>
+              )}
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500">
-              Total Work Orders
-            </p>
-            <p className="text-2xl font-bold text-slate-900">{metrics.total}</p>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500">
-              Open Work Orders
-            </p>
-            <p className="text-2xl font-bold text-slate-900">{metrics.open}</p>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
-            <Hourglass className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500">
-              In Progress WOs
-            </p>
-            <p className="text-2xl font-bold text-slate-900">
-              {metrics.inProgress}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-            <Percent className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500">
-              WO Completion Rate
-            </p>
-            <p className="text-2xl font-bold text-slate-900">
-              {metrics.completionRate}%
-            </p>
-          </div>
-        </div>
+        ))}
       </div>
-      {/* Al doilea rând de carduri KPI și Health Score */}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
           <div className="p-3 bg-green-50 text-green-600 rounded-lg">
             <CheckSquare className="w-6 h-6" />
           </div>
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-slate-500">
               Completed Work Orders
             </p>
-            <p className="text-2xl font-bold text-slate-900">
-              {metrics.completed}
-            </p>
+            {loading ? (
+              <div className="h-7 bg-slate-200 rounded animate-pulse w-16 mt-1" />
+            ) : (
+              <p className="text-2xl font-bold text-slate-900">
+                {metrics.completed}
+              </p>
+            )}
           </div>
         </div>
-
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-slate-100 text-slate-800 rounded-lg">
@@ -282,82 +370,114 @@ export default function PreventiveMaintenanceDashboard() {
               <p className="text-sm font-medium text-slate-500">
                 Maintenance Health Score
               </p>
-              <p className="text-3xl font-bold text-slate-900">
-                {metrics.healthScore}%
-              </p>
+              {loading ? (
+                <div className="h-8 bg-slate-200 rounded animate-pulse w-20 mt-1" />
+              ) : (
+                <p className="text-3xl font-bold text-slate-900">
+                  {metrics.healthScore}%
+                </p>
+              )}
             </div>
           </div>
-          <span
-            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${metrics.healthBadge.color}`}
-          >
-            {metrics.healthBadge.text}
-          </span>
+          {!loading && (
+            <span
+              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${metrics.healthBadge.color}`}
+            >
+              {metrics.healthBadge.text}
+            </span>
+          )}
         </div>
       </div>
-      {/* Secțiune Grafice Analytics (Pie Chart & Bar Chart) bazate pe Work Orders */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Graficul 1: Pie Chart - PM Status Distribution */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[350px]">
-          <h3 className="text-base font-bold text-slate-900 mb-4">
-            PM Status Distribution
+
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[350px] animate-pulse flex flex-col justify-between">
+            <div className="h-4 bg-slate-200 rounded w-1/3" />
+            <div className="h-48 bg-slate-100 rounded w-full" />
+            <div className="h-4 bg-slate-200 rounded w-1/2 mx-auto" />
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[350px] animate-pulse flex flex-col justify-between">
+            <div className="h-4 bg-slate-200 rounded w-1/3" />
+            <div className="h-48 bg-slate-100 rounded w-full" />
+            <div className="h-4 bg-slate-200 rounded w-1/2 mx-auto" />
+          </div>
+        </div>
+      ) : metrics.total === 0 ? (
+        <div className="bg-white p-12 rounded-xl border border-slate-200 shadow-sm text-center flex flex-col items-center justify-center space-y-2">
+          <ClipboardList className="w-12 h-12 text-slate-300" />
+          <h3 className="text-lg font-bold text-slate-700">
+            No Work Orders found for selected period.
           </h3>
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
+          <p className="text-slate-400 text-sm">
+            Încercați să selectați un alt interval de timp sau adăugați comenzi
+            noi în sistem.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[350px]">
+            <h3 className="text-base font-bold text-slate-900 mb-4">
+              PM Status Distribution
+            </h3>
+            <div className="flex-1 min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={metrics.chartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) =>
+                      `${name} ${((percent || 0) * 100).toFixed(0)}%`
+                    }
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {metrics.chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => [`${value} Comenzi`, "Volum"]}
+                  />
+                  <Legend verticalAlign="bottom" height={36} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[350px]">
+            <h3 className="text-base font-bold text-slate-900 mb-4">
+              PM Status Overview
+            </h3>
+            <div className="flex-1 min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart
                   data={metrics.chartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) =>
-                    `${name} ${((percent || 0) * 100).toFixed(0)}%`
-                  }
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
+                  margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
                 >
-                  {metrics.chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => [`${value} Comenzi`, "Volum"]} />
-                <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
-            </ResponsiveContainer>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickLine={false}
+                  />
+                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                  <Tooltip
+                    formatter={(value) => [`${value} Comenzi`, "Cantitate"]}
+                  />
+                  <Bar dataKey="value" radius={4}>
+                    {metrics.chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
-        {/* Graficul 2: Bar Chart - PM Status Overview */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[350px]">
-          <h3 className="text-base font-bold text-slate-900 mb-4">
-            PM Status Overview
-          </h3>
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsBarChart
-                data={metrics.chartData}
-                margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
-                <Tooltip
-                  formatter={(value) => [`${value} Comenzi`, "Cantitate"]}
-                />
-                <Bar dataKey="value" radius={4}>
-                  {metrics.chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </RechartsBarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
