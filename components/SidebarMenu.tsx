@@ -218,6 +218,14 @@ export default function SidebarMenu({
               <span className="truncate">Weekly Maintenance</span>
             </Link>
 
+            <Link
+              href="/follow-up"
+              className={linkClass("/follow-up")}
+            >
+              <Wrench className={iconClass("/follow-up")} />
+              <span className="truncate">Follow-Up</span>
+            </Link>
+
             <Link href="/pm-history" className={linkClass("/pm-history")}>
               <History className={iconClass("/pm-history")} />
               <span className="truncate">PM History</span>

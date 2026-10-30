@@ -18,6 +18,7 @@ import {
   FileText,
   User,
   Settings,
+  AlertCircle,
 } from "lucide-react";
 
 interface WorkOrder {
@@ -36,6 +37,7 @@ interface WorkOrder {
   completed_at?: string | null;
   completed_by?: string | null;
   completion_comments?: string | null;
+  follow_up_findings?: string | null;
 }
 
 interface WorkOrderAction {
@@ -64,6 +66,7 @@ interface WorkOrderAction {
 }
 
 type ChecklistFilter = "ALL" | "OPEN" | "COMPLETED";
+
 export default function WorkOrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -80,6 +83,7 @@ export default function WorkOrderDetailsPage() {
     useState<ChecklistFilter>("ALL");
   const [completedBy, setCompletedBy] = useState("");
   const [completionComments, setCompletionComments] = useState("");
+  const [followUpFindings, setFollowUpFindings] = useState("");
   const [printLanguage, setPrintLanguage] = useState<"EN" | "RO">("EN");
 
   useEffect(() => {
@@ -104,6 +108,8 @@ export default function WorkOrderDetailsPage() {
       if (woData.completed_by) setCompletedBy(woData.completed_by);
       if (woData.completion_comments)
         setCompletionComments(woData.completion_comments);
+      if (woData.follow_up_findings)
+        setFollowUpFindings(woData.follow_up_findings);
 
       const { data: actionsData, error: actionsError } = await supabase
         .from("work_order_actions")
@@ -126,7 +132,7 @@ export default function WorkOrderDetailsPage() {
           .from("pm_tasks")
           .select(
             `
-            id,action,actiune,workcenter, equipment, sub_equipment, maintenance_equipment, operation, 
+            id, action, actiune, workcenter, equipment, sub_equipment, maintenance_equipment, operation, 
             control_method, technician, estimated_time , part_reference, 
             required_material, remarks, priority
           `,
@@ -289,12 +295,33 @@ export default function WorkOrderDetailsPage() {
           completed_at: completionIso,
           completed_by: completedBy.trim(),
           completion_comments: completionComments.trim(),
+          follow_up_findings: followUpFindings.trim(),
         })
         .eq("id", workOrder.id);
 
       if (error) throw error;
 
-      // Actualizare PM Tasks asociate
+      if (followUpFindings.trim() !== "") {
+        const { error: followUpError } = await supabase
+          .from("follow_up_actions")
+          .insert({
+            wo_id: workOrder.id,
+            tool_number: workOrder.tool_number || workOrder.tool_id,
+            title: `PM Follow-Up - ${workOrder.tool_number || workOrder.tool_id}`,
+            description: followUpFindings.trim(),
+            priority: "MEDIUM",
+            status: "OPEN",
+            created_by: completedBy.trim(),
+          });
+
+        if (followUpError) {
+          console.error("Error creating auto follow-up record:", followUpError);
+          alert(
+            "Work Order closed, but there was an error generating the automatic Follow-Up task.",
+          );
+        }
+      }
+
       const pmTaskIds = actions
         .map((action) => action.preventive_action_id)
         .filter(Boolean);
@@ -336,7 +363,6 @@ export default function WorkOrderDetailsPage() {
       alert(
         `Work Order ${workOrder.wo_number} closed successfully as COMPLETED.`,
       );
-
       await loadWorkOrderData();
     } catch (err: any) {
       alert(err.message || "Failed to complete the Work Order");
@@ -344,7 +370,6 @@ export default function WorkOrderDetailsPage() {
       setIsUpdating(false);
     }
   }
-
   function calculateDuration(): string {
     if (!workOrder?.started_at || !workOrder?.completed_at) return "N/A";
     const start = new Date(workOrder.started_at).getTime();
@@ -421,7 +446,6 @@ export default function WorkOrderDetailsPage() {
     }
     return true;
   });
-
   return (
     <>
       <WorkOrderPrint
@@ -482,7 +506,6 @@ export default function WorkOrderDetailsPage() {
                 ✓ COMPLETED
               </span>
             )}
-
             <select
               value={printLanguage}
               onChange={(e) => setPrintLanguage(e.target.value as "EN" | "RO")}
@@ -498,9 +521,9 @@ export default function WorkOrderDetailsPage() {
               <Printer className="w-4 h-4" />
               <span>Print Document</span>
             </button>
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto"></div>
           </div>
         </div>
+
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:p-6 grid grid-cols-1 md:grid-cols-5 gap-6">
           <div className="md:col-span-3 grid grid-cols-2 sm:grid-cols-3 gap-6">
             <div className="space-y-1">
@@ -627,7 +650,6 @@ export default function WorkOrderDetailsPage() {
             </div>
           </div>
         </div>
-
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm flex items-center justify-between">
             <div>
@@ -695,6 +717,7 @@ export default function WorkOrderDetailsPage() {
             />
           </div>
         </div>
+
         {workOrder.status === "COMPLETED" && (
           <div className="bg-gradient-to-br from-green-50 to-white border border-green-200 rounded-xl p-5 shadow-sm space-y-3">
             <div className="flex items-center gap-2 border-b border-green-100 pb-2">
@@ -742,9 +765,18 @@ export default function WorkOrderDetailsPage() {
                 </p>
               </div>
             )}
+            {workOrder.follow_up_findings && (
+              <div className="mt-1 bg-white p-3 border border-amber-200 rounded-lg shadow-inner bg-amber-50/10">
+                <span className="block text-[11px] font-bold text-amber-600 uppercase mb-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Follow-Up Findings
+                </span>
+                <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                  {workOrder.follow_up_findings}
+                </p>
+              </div>
+            )}
           </div>
         )}
-
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="p-4 bg-slate-50/70 border-b border-slate-200 space-y-4">
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-3">
@@ -958,6 +990,19 @@ export default function WorkOrderDetailsPage() {
                 placeholder="Specificați componentele înlocuite, defecțiunile găsite sau observații din teren..."
                 rows={3}
                 className="w-full border border-slate-200 rounded-lg p-2.5 text-sm disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed focus:outline-none focus:border-blue-500 transition-colors bg-white font-medium"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase text-amber-600 mb-2 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" /> Follow-Up Findings
+              </label>
+              <textarea
+                disabled={workOrder.status === "COMPLETED"}
+                value={followUpFindings}
+                onChange={(e) => setFollowUpFindings(e.target.value)}
+                placeholder="Issues found during PM that require follow-up actions..."
+                rows={3}
+                className="w-full border border-amber-200 rounded-lg p-2.5 text-sm disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed focus:outline-none focus:border-amber-500 transition-colors bg-white font-medium focus:ring-1 focus:ring-amber-500"
               />
             </div>
           </div>

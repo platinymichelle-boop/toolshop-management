@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   Sun,
   Moon,
+  AlertCircleIcon,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -176,6 +177,12 @@ export default function Sidebar() {
             name: "Weekly Planning",
             href: "/weekly-maintenance",
             icon: ClipboardCheck,
+          },
+
+          {
+            name: "Follow-Up",
+            href: "/follow-up",
+            icon: AlertCircleIcon,
           },
           {
             name: "Technical Team",
