@@ -218,10 +218,7 @@ export default function SidebarMenu({
               <span className="truncate">Weekly Maintenance</span>
             </Link>
 
-            <Link
-              href="/follow-up"
-              className={linkClass("/follow-up")}
-            >
+            <Link href="/follow-up" className={linkClass("/follow-up")}>
               <Wrench className={iconClass("/follow-up")} />
               <span className="truncate">Follow-Up</span>
             </Link>
@@ -229,6 +226,11 @@ export default function SidebarMenu({
             <Link href="/pm-history" className={linkClass("/pm-history")}>
               <History className={iconClass("/pm-history")} />
               <span className="truncate">PM History</span>
+            </Link>
+
+            <Link href="/fixtures" className={linkClass("/fixtures")}>
+              <Wrench className={iconClass("/fixtures")} />
+              <span className="truncate">Fixtures</span>
             </Link>
 
             {isAdmin && (

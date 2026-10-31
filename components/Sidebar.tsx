@@ -184,6 +184,12 @@ export default function Sidebar() {
             href: "/follow-up",
             icon: AlertCircleIcon,
           },
+
+          {
+            name: "Fixtures",
+            href: "/fixtures",
+            icon: Wrench,
+          },
           {
             name: "Technical Team",
             href: "/technicians",
