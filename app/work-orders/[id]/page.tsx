@@ -38,6 +38,8 @@ interface WorkOrder {
   completed_by?: string | null;
   completion_comments?: string | null;
   follow_up_findings?: string | null;
+  source?: string | null;
+  fixture_pm_task_id?: string | null;
 }
 
 interface WorkOrderAction {
@@ -63,6 +65,7 @@ interface WorkOrderAction {
   priority?: string | null;
   action_en?: string | null;
   action_ro?: string | null;
+  fixture_pm_task_id?: string | null;
 }
 
 type ChecklistFilter = "ALL" | "OPEN" | "COMPLETED";
@@ -273,7 +276,7 @@ export default function WorkOrderDetailsPage() {
 
     const allChecked = actions.every((act) => act.is_completed);
     if (!allChecked) {
-      alert("All preventive actions must be completed.");
+      alert("All preventative actions must be completed.");
       return;
     }
 
@@ -288,6 +291,7 @@ export default function WorkOrderDetailsPage() {
       const completionDate = new Date();
       const completionIso = completionDate.toISOString();
 
+      // 1. Actualizare status Work Order curent
       const { error } = await supabase
         .from("work_orders")
         .update({
@@ -301,6 +305,7 @@ export default function WorkOrderDetailsPage() {
 
       if (error) throw error;
 
+      // 2. Logica existenta de Follow-Up Actions
       if (followUpFindings.trim() !== "") {
         const { error: followUpError } = await supabase
           .from("follow_up_actions")
@@ -322,6 +327,48 @@ export default function WorkOrderDetailsPage() {
         }
       }
 
+      // 3. LOGICA NOUĂ: Sincronizare automată în cascadă pentru FIXTURE_PM
+      if (workOrder.source === "FIXTURE_PM" && workOrder.fixture_pm_task_id) {
+        const { data: fixturePmTask, error: fetchPmError } = await supabase
+          .from("fixture_pm")
+          .select("frequency_days")
+          .eq("id", workOrder.fixture_pm_task_id)
+          .single();
+
+        if (fetchPmError) {
+          console.error(
+            "Error fetching frequency_days from fixture_pm:",
+            fetchPmError,
+          );
+          throw fetchPmError;
+        }
+
+        if (fixturePmTask) {
+          const nextDate = new Date(completionDate);
+          nextDate.setDate(
+            nextDate.getDate() + Number(fixturePmTask.frequency_days || 1),
+          );
+          const nextDueString = nextDate.toISOString().split("T")[0]; // Format YYYY-MM-DD curat
+
+          const { error: updateFixturePmError } = await supabase
+            .from("fixture_pm")
+            .update({
+              last_completed: completionIso,
+              next_due: nextDueString,
+            })
+            .eq("id", workOrder.fixture_pm_task_id);
+
+          if (updateFixturePmError) {
+            console.error(
+              "Error updating fixture_pm entry:",
+              updateFixturePmError,
+            );
+            throw updateFixturePmError;
+          }
+        }
+      }
+
+      // 4. Logica existenta de sincronizare pentru pm_tasks standard (Tools)
       const pmTaskIds = actions
         .map((action) => action.preventive_action_id)
         .filter(Boolean);
@@ -366,10 +413,12 @@ export default function WorkOrderDetailsPage() {
       await loadWorkOrderData();
     } catch (err: any) {
       alert(err.message || "Failed to complete the Work Order");
-    } finally {
+    }
+    {
       setIsUpdating(false);
     }
   }
+
   function calculateDuration(): string {
     if (!workOrder?.started_at || !workOrder?.completed_at) return "N/A";
     const start = new Date(workOrder.started_at).getTime();
