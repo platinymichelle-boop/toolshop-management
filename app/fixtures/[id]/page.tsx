@@ -17,6 +17,8 @@ import {
   Calendar,
   Globe,
   Users,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 interface Fixture {
@@ -85,6 +87,9 @@ export default function FixtureMaintenanceDashboard({
   >({});
   const [taskShifts, setTaskShifts] = useState<
     Record<string, "SHIFT_1" | "SHIFT_2" | "SHIFT_3">
+  >({});
+  const [expandedSections, setExpandedSections] = useState<
+    Record<string, boolean>
   >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +170,18 @@ export default function FixtureMaintenanceDashboard({
           });
           return initialShifts;
         });
+
+        const order = ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"];
+        let firstActiveFreq = "";
+        for (const freq of order) {
+          if (fetchedTasks.some((t) => t.frequency === freq)) {
+            firstActiveFreq = freq;
+            break;
+          }
+        }
+        if (firstActiveFreq) {
+          setExpandedSections({ [firstActiveFreq]: true });
+        }
       }
     } catch (err) {
       setError("Failed to load fixtures.");
@@ -177,7 +194,6 @@ export default function FixtureMaintenanceDashboard({
       fetchData().finally(() => setLoading(false));
     }
   }, [fixtureId]);
-
   const showToast = (
     message: string,
     type: "success" | "error" = "success",
@@ -214,14 +230,12 @@ export default function FixtureMaintenanceDashboard({
           next_due: nextDue.toISOString().split("T")[0],
         })
         .eq("id", task.id);
-      await supabase
-        .from("fixture_pm_history")
-        .insert({
-          fixture_id: fixtureId,
-          technician_name: shiftLabel,
-          result: "Completed",
-          comments: "",
-        });
+      await supabase.from("fixture_pm_history").insert({
+        fixture_id: fixtureId,
+        technician_name: shiftLabel,
+        result: "Completed",
+        comments: "",
+      });
       showToast(`Task "${task.task_name}" completed successfully!`);
       await fetchData();
     } catch (err) {
@@ -267,7 +281,6 @@ export default function FixtureMaintenanceDashboard({
         selectedLang === "RO" && task.procedure_ro
           ? task.procedure_ro
           : task.procedure;
-
       const { data: newWO, error: woError } = await supabase
         .from("work_orders")
         .insert({
@@ -293,6 +306,12 @@ export default function FixtureMaintenanceDashboard({
         throw woError;
       }
 
+      console.log("Generated WO:", newWO);
+
+      if (!newWO?.id) {
+        throw new Error("Work Order ID not returned");
+      }
+
       const insertRows = actionsList.map((act) => {
         let description = act.action_description;
         if (selectedLang === "RO" && act.action_description_ro) {
@@ -316,7 +335,13 @@ export default function FixtureMaintenanceDashboard({
       }
 
       showToast("Work Order generated successfully");
-      router.push(`/work-orders/${newWO.id}`);
+
+      try {
+        await router.push(`/work-orders/${newWO.id}`);
+      } catch (pushErr) {
+        console.error("Router push failed:", pushErr);
+        showToast("Redirection failed, please check console.", "error");
+      }
     } catch (err) {
       console.log(err);
       showToast("Failed to generate Work Order.", "error");
@@ -331,6 +356,13 @@ export default function FixtureMaintenanceDashboard({
       await handleCompleteTask(task);
     }
     setActionLoading(null);
+  };
+
+  const toggleSection = (freq: string) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [freq]: !prev[freq],
+    }));
   };
 
   const totalTasks = pmTasks.length;
@@ -381,12 +413,21 @@ export default function FixtureMaintenanceDashboard({
   };
   const health = getHealthScore();
 
+  const tasksByFrequency = {
+    Daily: pmTasks.filter((t) => t.frequency === "Daily"),
+    Weekly: pmTasks.filter((t) => t.frequency === "Weekly"),
+    Monthly: pmTasks.filter((t) => t.frequency === "Monthly"),
+    Quarterly: pmTasks.filter((t) => t.frequency === "Quarterly"),
+    Yearly: pmTasks.filter((t) => t.frequency === "Yearly"),
+  };
+
   if (loading)
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-900 border-t-transparent" />
       </div>
     );
+
   if (error || !fixture)
     return (
       <div className="flex h-screen items-center justify-center text-rose-600 bg-slate-50">
@@ -444,7 +485,6 @@ export default function FixtureMaintenanceDashboard({
             </button>
           </div>
         </div>
-
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {[
             {
@@ -574,196 +614,244 @@ export default function FixtureMaintenanceDashboard({
 
         <main>
           {activeTab === "pm" && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="space-y-4">
               {pmTasks.length === 0 ? (
-                <div className="col-span-2 text-center py-8 text-slate-400 text-sm">
+                <div className="text-center py-8 text-slate-400 text-sm">
                   No tasks configured.
                 </div>
               ) : (
-                pmTasks.map((t) => {
-                  const status = getTaskStatus(t.next_due);
-                  const badgeClass =
-                    status === "Overdue"
-                      ? "bg-rose-50 text-rose-700 border-rose-200"
-                      : status === "Due Soon"
-                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                        : "bg-emerald-50 text-emerald-700 border-emerald-200";
-                  const actionsList = taskActionsMap[t.id] || [];
-                  const totalActions = actionsList.length;
-                  const remainingActions =
-                    totalActions > 3 ? totalActions - 3 : 0;
-                  const currentTaskLang = taskLanguages[t.id] || "EN";
-                  const currentTaskShift = taskShifts[t.id] || "SHIFT_1";
+                (
+                  Object.keys(tasksByFrequency) as Array<
+                    keyof typeof tasksByFrequency
+                  >
+                ).map((freq) => {
+                  const tasks = tasksByFrequency[freq];
+                  if (tasks.length === 0) return null;
+
+                  const isExpanded = !!expandedSections[freq];
 
                   return (
                     <div
-                      key={t.id}
-                      className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                      key={freq}
+                      className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm"
                     >
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-bold text-base text-slate-900">
-                            {currentTaskLang === "RO" && t.task_name_ro
-                              ? t.task_name_ro
-                              : t.task_name}
-                          </h4>
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${badgeClass}`}
-                          >
-                            {status}
+                      <button
+                        onClick={() => toggleSection(freq)}
+                        className="w-full rounded-xl bg-slate-900 text-white px-4 py-3 font-bold text-sm uppercase tracking-wider flex items-center justify-between text-left transition hover:bg-slate-800"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                          <span>
+                            {freq} PM ({tasks.length})
                           </span>
                         </div>
+                      </button>
 
-                        <div className="flex flex-wrap items-center gap-3">
-                          <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600">
-                            <Globe className="h-3.5 w-3.5 text-slate-400" />
-                            <span className="text-[11px] text-slate-400 uppercase tracking-wider">
-                              Language:
-                            </span>
-                            <select
-                              value={currentTaskLang}
-                              onChange={(e) =>
-                                setTaskLanguages((prev) => ({
-                                  ...prev,
-                                  [t.id]: e.target.value as "EN" | "RO",
-                                }))
-                              }
-                              className="bg-transparent focus:outline-none font-bold text-slate-700 cursor-pointer"
-                            >
-                              <option value="EN">EN English</option>
-                              <option value="RO">RO Română</option>
-                            </select>
-                          </div>
-                          <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600">
-                            <Users className="h-3.5 w-3.5 text-slate-400" />
-                            <span className="text-[11px] text-slate-400 uppercase tracking-wider">
-                              Shift:
-                            </span>
-                            <select
-                              value={currentTaskShift}
-                              onChange={(e) =>
-                                setTaskShifts((prev) => ({
-                                  ...prev,
-                                  [t.id]: e.target.value as
-                                    | "SHIFT_1"
-                                    | "SHIFT_2"
-                                    | "SHIFT_3",
-                                }))
-                              }
-                              className="bg-transparent focus:outline-none font-bold text-slate-700 cursor-pointer"
-                            >
-                              <option value="SHIFT_1">Shift 1</option>
-                              <option value="SHIFT_2">Shift 2</option>
-                              <option value="SHIFT_3">Shift 3</option>
-                            </select>
-                          </div>
-                        </div>
+                      {isExpanded && (
+                        <div className="p-4 grid grid-cols-1 gap-4 lg:grid-cols-2 border-t border-slate-100 bg-slate-50/30">
+                          {tasks.map((t) => {
+                            const status = getTaskStatus(t.next_due);
+                            const badgeClass =
+                              status === "Overdue"
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : status === "Due Soon"
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200";
+                            const actionsList = taskActionsMap[t.id] || [];
+                            const totalActions = actionsList.length;
+                            const remainingActions =
+                              totalActions > 3 ? totalActions - 3 : 0;
+                            const currentTaskLang = taskLanguages[t.id] || "EN";
+                            const currentTaskShift =
+                              taskShifts[t.id] || "SHIFT_1";
 
-                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2">
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 border-b border-slate-200/60 pb-1.5">
-                            <ClipboardList className="h-3.5 w-3.5 text-slate-500" />
-                            <span>Checklist Items: {totalActions}</span>
-                          </div>
-                          {totalActions === 0 ? (
-                            <p className="text-[11px] text-slate-400 italic">
-                              No checklist actions configured.
-                            </p>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {actionsList.slice(0, 3).map((act, idx) => (
-                                <p
-                                  key={act.id}
-                                  className="text-[11px] text-slate-600 font-medium flex items-center gap-2"
-                                >
-                                  <span className="text-[10px] text-slate-400 font-bold w-3">
-                                    {idx + 1}.
-                                  </span>
-                                  <span className="truncate">
-                                    {currentTaskLang === "RO" &&
-                                    act.action_description_ro
-                                      ? act.action_description_ro
-                                      : act.action_description}
-                                  </span>
-                                </p>
-                              ))}
-                              {remainingActions > 0 && (
-                                <p className="text-[10px] font-bold text-blue-600 bg-blue-50/50 inline-block px-2 py-0.5 rounded mt-0.5">
-                                  + {remainingActions} more actions
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                            return (
+                              <div
+                                key={t.id}
+                                className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                              >
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <h4 className="font-bold text-base text-slate-900">
+                                      {currentTaskLang === "RO" &&
+                                      t.task_name_ro
+                                        ? t.task_name_ro
+                                        : t.task_name}
+                                    </h4>
+                                    <span
+                                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${badgeClass}`}
+                                    >
+                                      {status}
+                                    </span>
+                                  </div>
 
-                        <p className="text-xs bg-slate-50 text-slate-500 p-2.5 rounded-lg border border-slate-100">
-                          <strong className="text-slate-700 block mb-0.5">
-                            Procedure:
-                          </strong>
-                          {currentTaskLang === "RO" && t.procedure_ro
-                            ? t.procedure_ro
-                            : t.procedure ||
-                              "Standard industrial preventive check."}
-                        </p>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500">
-                          <div>
-                            Frequency:{" "}
-                            <span className="font-semibold text-slate-700">
-                              {t.frequency} ({t.frequency_days}d)
-                            </span>
-                          </div>
-                          <div>
-                            Est. Time:{" "}
-                            <span className="font-semibold text-slate-700">
-                              {t.estimated_time}
-                            </span>
-                          </div>
-                          <div>
-                            Responsible:{" "}
-                            <span className="font-semibold text-slate-700">
-                              {t.responsible}
-                            </span>
-                          </div>
-                          <div>
-                            Next Due:{" "}
-                            <span className="font-bold text-slate-900">
-                              {t.next_due
-                                ? new Date(t.next_due).toLocaleDateString()
-                                : "N/A"}
-                            </span>
-                          </div>
-                          <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
-                            Last Completed:{" "}
-                            <span className="font-semibold text-slate-700">
-                              {t.last_completed
-                                ? new Date(
-                                    t.last_completed,
-                                  ).toLocaleDateString()
-                                : "Never"}
-                            </span>
-                          </div>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600">
+                                      <Globe className="h-3.5 w-3.5 text-slate-400" />
+                                      <span className="text-[11px] text-slate-400 uppercase tracking-wider">
+                                        Language:
+                                      </span>
+                                      <select
+                                        value={currentTaskLang}
+                                        onChange={(e) =>
+                                          setTaskLanguages((prev) => ({
+                                            ...prev,
+                                            [t.id]: e.target.value as
+                                              | "EN"
+                                              | "RO",
+                                          }))
+                                        }
+                                        className="bg-transparent focus:outline-none font-bold text-slate-700 cursor-pointer"
+                                      >
+                                        <option value="EN">EN English</option>
+                                        <option value="RO">RO Română</option>
+                                      </select>
+                                    </div>
+                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600">
+                                      <Users className="h-3.5 w-3.5 text-slate-400" />
+                                      <span className="text-[11px] text-slate-400 uppercase tracking-wider">
+                                        Shift:
+                                      </span>
+                                      <select
+                                        value={currentTaskShift}
+                                        onChange={(e) =>
+                                          setTaskShifts((prev) => ({
+                                            ...prev,
+                                            [t.id]: e.target.value as
+                                              | "SHIFT_1"
+                                              | "SHIFT_2"
+                                              | "SHIFT_3",
+                                          }))
+                                        }
+                                        className="bg-transparent focus:outline-none font-bold text-slate-700 cursor-pointer"
+                                      >
+                                        <option value="SHIFT_1">Shift 1</option>
+                                        <option value="SHIFT_2">Shift 2</option>
+                                        <option value="SHIFT_3">Shift 3</option>
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 border-b border-slate-200/60 pb-1.5">
+                                      <ClipboardList className="h-3.5 w-3.5 text-slate-500" />
+                                      <span>
+                                        Checklist Items: {totalActions}
+                                      </span>
+                                    </div>
+                                    {totalActions === 0 ? (
+                                      <p className="text-[11px] text-slate-400 italic">
+                                        No checklist actions configured.
+                                      </p>
+                                    ) : (
+                                      <div className="space-y-1.5">
+                                        {actionsList
+                                          .slice(0, 3)
+                                          .map((act, idx) => (
+                                            <p
+                                              key={act.id}
+                                              className="text-[11px] text-slate-600 font-medium flex items-center gap-2"
+                                            >
+                                              <span className="text-[10px] text-slate-400 font-bold w-3">
+                                                {idx + 1}.
+                                              </span>
+                                              <span className="truncate">
+                                                {currentTaskLang === "RO" &&
+                                                act.action_description_ro
+                                                  ? act.action_description_ro
+                                                  : act.action_description}
+                                              </span>
+                                            </p>
+                                          ))}
+                                        {remainingActions > 0 && (
+                                          <p className="text-[10px] font-bold text-blue-600 bg-blue-50/50 inline-block px-2 py-0.5 rounded mt-0.5">
+                                            + {remainingActions} more actions
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <p className="text-xs bg-slate-50 text-slate-500 p-2.5 rounded-lg border border-slate-100">
+                                    <strong className="text-slate-700 block mb-0.5">
+                                      Procedure:
+                                    </strong>
+                                    {currentTaskLang === "RO" && t.procedure_ro
+                                      ? t.procedure_ro
+                                      : t.procedure ||
+                                        "Standard industrial preventive check."}
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500">
+                                    <div>
+                                      Frequency:{" "}
+                                      <span className="font-semibold text-slate-700">
+                                        {t.frequency} ({t.frequency_days}d)
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Est. Time:{" "}
+                                      <span className="font-semibold text-slate-700">
+                                        {t.estimated_time}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Responsible:{" "}
+                                      <span className="font-semibold text-slate-700">
+                                        {t.responsible}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Next Due:{" "}
+                                      <span className="font-bold text-slate-900">
+                                        {t.next_due
+                                          ? new Date(
+                                              t.next_due,
+                                            ).toLocaleDateString()
+                                          : "N/A"}
+                                      </span>
+                                    </div>
+                                    <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
+                                      Last Completed:{" "}
+                                      <span className="font-semibold text-slate-700">
+                                        {t.last_completed
+                                          ? new Date(
+                                              t.last_completed,
+                                            ).toLocaleDateString()
+                                          : "Never"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mt-5 grid grid-cols-2 gap-2">
+                                  <button
+                                    disabled={actionLoading !== null}
+                                    onClick={() => handleCompleteTask(t)}
+                                    className="rounded-xl bg-slate-900 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-slate-800 shadow transition disabled:opacity-40"
+                                  >
+                                    {actionLoading === t.id
+                                      ? "Processing..."
+                                      : "Complete Task"}
+                                  </button>
+                                  <button
+                                    disabled={actionLoading !== null}
+                                    onClick={() => handleGenerateWO(t)}
+                                    className="rounded-xl border border-slate-200 bg-white py-2 text-xs font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-40"
+                                  >
+                                    <Wrench className="h-3.5 w-3.5" />{" "}
+                                    {actionLoading === `wo-${t.id}`
+                                      ? "Generating..."
+                                      : "Generate WO"}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
-                      <div className="mt-5 grid grid-cols-2 gap-2">
-                        <button
-                          disabled={actionLoading !== null}
-                          onClick={() => handleCompleteTask(t)}
-                          className="rounded-xl bg-slate-900 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-slate-800 shadow transition disabled:opacity-40"
-                        >
-                          {actionLoading === t.id
-                            ? "Processing..."
-                            : "Complete Task"}
-                        </button>
-                        <button
-                          disabled={actionLoading !== null}
-                          onClick={() => handleGenerateWO(t)}
-                          className="rounded-xl border border-slate-200 bg-white py-2 text-xs font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-40"
-                        >
-                          <Wrench className="h-3.5 w-3.5" />{" "}
-                          {actionLoading === `wo-${t.id}`
-                            ? "Generating..."
-                            : "Generate WO"}
-                        </button>
-                      </div>
+                      )}
                     </div>
                   );
                 })

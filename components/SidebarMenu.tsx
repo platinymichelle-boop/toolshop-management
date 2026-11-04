@@ -233,6 +233,16 @@ export default function SidebarMenu({
               <span className="truncate">Fixtures</span>
             </Link>
 
+            <Link
+              href="/fixture-preventive-maintenance"
+              className={linkClass("/fixture-preventive-maintenance")}
+            >
+              <ClipboardCheck
+                className={iconClass("/fixture-preventive-maintenance")}
+              />
+              <span className="truncate">Fixture PM</span>
+            </Link>
+
             {isAdmin && (
               <Link href="/technicians" className={linkClass("/technicians")}>
                 <Users className={iconClass("/technicians")} />

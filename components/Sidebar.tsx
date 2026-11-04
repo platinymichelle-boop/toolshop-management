@@ -186,9 +186,9 @@ export default function Sidebar() {
           },
 
           {
-            name: "Fixtures",
-            href: "/fixtures",
-            icon: Wrench,
+            name: "Fixture PM",
+            href: "/fixture-preventive-maintenance",
+            icon: ClipboardCheck,
           },
           {
             name: "Technical Team",
