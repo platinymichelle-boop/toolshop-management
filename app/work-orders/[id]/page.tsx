@@ -500,6 +500,7 @@ export default function WorkOrderDetailsPage() {
       <WorkOrderPrint
         woNumber={workOrder.wo_number}
         toolNumber={workOrder.tool_number || workOrder.tool_id}
+        fixtureName={workOrder.tool_name || "N/A"}
         technician={workOrder.completed_by || workOrder.created_by}
         scheduledDate={workOrder.scheduled_date}
         priority={workOrder.priority || "MEDIUM"}

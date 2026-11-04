@@ -24,6 +24,7 @@ interface PrintAction {
 interface WorkOrderPrintProps {
   woNumber: string;
   toolNumber: string;
+  fixtureName: string;
   technician: string;
   scheduledDate: string;
   priority: string;
@@ -35,6 +36,7 @@ interface WorkOrderPrintProps {
 export default function WorkOrderPrint({
   woNumber,
   toolNumber,
+  fixtureName,
   technician,
   scheduledDate,
   priority,
@@ -165,6 +167,13 @@ export default function WorkOrderPrint({
                 Tool Number:
               </span>{" "}
               <span className="font-black text-sm">{toolNumber}</span>
+            </div>
+
+            <div>
+              <span className="font-bold text-slate-500 uppercase">
+                Fixture Name:
+              </span>{" "}
+              <span className="font-black text-sm">{fixtureName || "N/A"}</span>
             </div>
 
             <div>
