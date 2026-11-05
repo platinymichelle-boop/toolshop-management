@@ -46,6 +46,7 @@ interface WorkOrderTask {
   id: string;
   task_name: string;
   task_name_ro: string;
+  frequency: string;
   is_completed: boolean;
 }
 
@@ -107,7 +108,15 @@ export default function FixtureWorkOrderDetails({
 
       const { data: tasksData, error: tasksErr } = await supabase
         .from("fixture_work_order_tasks")
-        .select("id, task_name, task_name_ro, is_completed")
+        .select(
+          `
+  id,
+  task_name,
+  task_name_ro,
+  frequency,
+  is_completed
+`,
+        )
         .eq("fixture_work_order_id", woId)
         .order("id", { ascending: true });
 
@@ -288,6 +297,12 @@ export default function FixtureWorkOrderDetails({
     return { all, open, comp };
   }, [tasks]);
 
+  const workOrderFrequency = useMemo(() => {
+    if (!tasks.length) return "Monthly";
+
+    return tasks[0]?.frequency || "Monthly";
+  }, [tasks]);
+
   const getProgressBarColor = (percent: number) => {
     if (percent === 0) return "bg-rose-500";
     if (percent <= 75) return "bg-amber-500";
@@ -335,7 +350,8 @@ export default function FixtureWorkOrderDetails({
           .print-window-layout {
             display: block !important;
             width: 100% !important;
-            padding: 10px 25px !important;
+            margin-top: 30px !important;
+            padding: 20px 25px !important;
           }
           .industrial-table {
             width: 100% !important;
@@ -393,7 +409,7 @@ export default function FixtureWorkOrderDetails({
                 PREVENTIVE MAINTENANCE WORK ORDER
               </h1>
             </div>
-            <div className="text-right text-[10px] font-bold text-black leading-tight">
+            <div className="text-right text-[10px] font-bold text-black whitespace-nowrap">
               <p>SYSTEM DOC ID</p>
               <p className="text-xs font-black">FORM-PM-WO-REV2</p>
             </div>
@@ -435,7 +451,7 @@ export default function FixtureWorkOrderDetails({
                 <td className="font-medium">
                   FREQUENCY:{" "}
                   <span className="font-black">
-                    {workOrder.actions_count > 5 ? "1Y" : "1M"}
+                    {workOrderFrequency === "Yearly" ? "1Y" : "1M"}
                   </span>
                 </td>
               </tr>
@@ -486,7 +502,7 @@ export default function FixtureWorkOrderDetails({
                     </div>
                   </div>
                   <span className="border border-black px-2 py-0.5 text-[9px] font-black rounded-sm">
-                    {workOrder.actions_count > 5 ? "1Y" : "1M"}
+                    {workOrderFrequency === "Yearly" ? "1Y" : "1M"}
                   </span>
                 </div>
 
@@ -594,7 +610,7 @@ export default function FixtureWorkOrderDetails({
                   {workOrder.status}
                 </span>
                 <span className="px-3 py-0.5 rounded-full text-xs font-extrabold tracking-wider border uppercase bg-blue-50 text-blue-700 border-blue-200">
-                  {workOrder.actions_count > 5 ? "YEARLY PM" : "MONTHLY PM"}
+                  {workOrderFrequency === "Yearly" ? "YEARLY PM" : "MONTHLY PM"}
                 </span>
               </div>
 
