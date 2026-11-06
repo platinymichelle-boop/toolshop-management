@@ -158,11 +158,6 @@ export default function Sidebar() {
             badge: kpis.lowStockParts > 0 ? kpis.lowStockParts : null,
             badgeType: "danger",
           },
-          {
-            name: "Factory Monitor",
-            href: "/live-factory",
-            icon: Factory,
-          },
         ],
       },
       {
@@ -173,11 +168,6 @@ export default function Sidebar() {
             href: "/preventive-maintenance",
             icon: Wrench,
           },
-          {
-            name: "Weekly Planning",
-            href: "/weekly-maintenance",
-            icon: ClipboardCheck,
-          },
 
           {
             name: "Follow-Up",
@@ -186,20 +176,11 @@ export default function Sidebar() {
           },
 
           {
-            name: "Fixture PM",
-            href: "/fixture-preventive-maintenance",
-            icon: ClipboardCheck,
-          },
-          {
             name: "Technical Team",
             href: "/technicians",
             icon: Users,
           },
-          {
-            name: "Fluid Management",
-            href: "/fluid-management",
-            icon: Droplets,
-          },
+
           {
             name: "Maintenance Reports",
             href: "/maintenance-reports",
@@ -265,7 +246,7 @@ export default function Sidebar() {
                   Metal Stamping
                 </h1>
                 <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold tracking-widest uppercase">
-                  Enterprise CMS
+                  Toolshop Team
                 </p>
               </div>
             )}

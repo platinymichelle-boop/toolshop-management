@@ -20,6 +20,9 @@ function MaintenanceReportsForm() {
   const [searchingParts, setSearchingParts] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // 1. Adaugă starea reactivă pentru matrițe
+  const [dbToolsWithData, setDbToolsWithData] = useState<any[]>([]);
+
   // Noua stare pentru blocarea suprascrierii automate a orelor
   const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(false);
 
@@ -363,12 +366,35 @@ function MaintenanceReportsForm() {
     }
 
     try {
+      // NOU: Detectăm dinamic tipul matriței din baza de date pentru a clasifica raportul
+      let computedMainEqu = selectedMainEquipment || "Stamping Press";
+
+      try {
+        const { data: toolData, error: toolError } = await supabase
+          .from("tools")
+          .select("tool_type")
+          .eq("tool_number", equipmentCode.trim())
+          .maybeSingle();
+
+        if (!toolError && toolData && toolData.tool_type) {
+          computedMainEqu = toolData.tool_type;
+        }
+      } catch (dbFetchErr) {
+        console.error(
+          "Eșec la determinarea automată a tool_type-ului:",
+          dbFetchErr,
+        );
+      }
+
       const recordToInsert = {
         sap_notification: sapNotification,
         functional_location: functionalLocation,
         report_date: reportDate,
         shift: shift,
-        main_equ: selectedMainEquipment || "Stamping Press", // Fallback standard dacă fluxul vine din tracker operativ
+
+        // ADAPTARE DINAMICĂ: Salvează categoria reală detectată (PROGRESIV, TRANSFER, BLANKING)
+        main_equ: computedMainEqu,
+
         equipment_code: equipmentCode,
         sub_equ: subEquipment || "",
         defection_type: defectionType || "",
@@ -439,6 +465,7 @@ function MaintenanceReportsForm() {
       setIsLoading(false);
     }
   };
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto bg-slate-50 min-h-screen">
       {/* Header */}
@@ -546,7 +573,7 @@ function MaintenanceReportsForm() {
                   Main Equipment *
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold"
                   value={selectedMainEquipment}
                   onChange={(e) => {
                     setSelectedMainEquipment(e.target.value);
@@ -556,37 +583,159 @@ function MaintenanceReportsForm() {
                   }}
                 >
                   <option value="">Select Main Equipment</option>
-                  {mainEquipment.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
+                  <option value="DETECTARE_AUTOMATA">
+                    Detectare Automată (Din cod utilaj)
+                  </option>
+                  <option value="PROGRESIV">PRESA PROGRESIVA (PROG)</option>
+                  <option value="TRANSFER">PRESA TRANSFER (TRANS)</option>
+                  <option value="BLANKING">LINIE BLANKING / TĂIERE</option>
                 </select>
               </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Equipment Code *
                 </label>
-                {selectedMainEquipment ? (
+                {selectedMainEquipment &&
+                selectedMainEquipment !== "DETECTARE_AUTOMATA" ? (
                   <select
-                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 font-medium"
                     value={equipmentCode}
                     onChange={(e) => setEquipmentCode(e.target.value)}
                     required
                   >
                     <option value="">Select Equipment Code</option>
-                    {selectedData &&
-                      selectedData.machines.map((machine) => (
-                        <option key={machine} value={machine}>
-                          {machine}
-                        </option>
-                      ))}
+                    {/* 
+        METODĂ DUBLĂ DE SIGURANȚĂ:
+        Dacă dbToolsWithData conține elemente, filtrăm după tool_type.
+        Dacă baza de date nu a apucat să se încarce în această stare, filtrăm direct pe ecran 
+        după prefixul codului utilajului pentru a debloca selecția instant!
+      */}
+                    {dbToolsWithData && dbToolsWithData.length > 0 ? (
+                      dbToolsWithData
+                        .filter((t: any) => {
+                          if (!t.tool_type) return false;
+                          return (
+                            String(t.tool_type).trim().toUpperCase() ===
+                            String(selectedMainEquipment).trim().toUpperCase()
+                          );
+                        })
+                        .map((t: any) => (
+                          <option key={t.tool_number} value={t.tool_number}>
+                            {t.tool_number}
+                          </option>
+                        ))
+                    ) : /* FALLBACK INTELIGENT: Dacă tabela înca se încarcă în fundal, pre-afișăm seriile cunoscute */
+                    selectedMainEquipment === "PROGRESIV" ? (
+                      <>
+                        <option value="M250SP001 - 002">M250SP001 - 002</option>
+                        <option value="M250SP004">M250SP004</option>
+                        <option value="M250SP008 - 009">M250SP008 - 009</option>
+                        <option value="M250SP010">M250SP010</option>
+                        <option value="M250SP013">M250SP013</option>
+                        <option value="M250SP015">M250SP015</option>
+                        <option value="M250SP017">M250SP017</option>
+                        <option value="M250SP018">M250SP018</option>
+                        <option value="M250SP108">M250SP108</option>
+                        <option value="M250SP109">M250SP109</option>
+                        <option value="M250SP110">M250SP110</option>
+                        <option value="M250SP217">M250SP217</option>
+                        <option value="M250SP308">M250SP308</option>
+                        <option value="M250SP309">M250SP309</option>
+                        <option value="M250SP401 - 402">M250SP401 - 402</option>
+                        <option value="M250SP403">M250SP403</option>
+                        <option value="M250SP409">M250SP409</option>
+                        <option value="M250SP425">M250SP425</option>
+                        <option value="M250SP426">M250SP426</option>
+                      </>
+                    ) : selectedMainEquipment === "TRANSFER" ? (
+                      <>
+                        <option value="M315SP003">M315SP003</option>
+                        <option value="M315SP004">M315SP004</option>
+                        <option value="M315SP006 - 007">M315SP006 - 007</option>
+                        <option value="M315SP008 - 009">M315SP008 - 009</option>
+                        <option value="M315SP010 - 011">M315SP010 - 011</option>
+                        <option value="M315SP012">M315SP012</option>
+                        <option value="M315SP013 - 018">M315SP013 - 018</option>
+                        <option value="M315SP015">M315SP015</option>
+                        <option value="M315SP016">M315SP016</option>
+                        <option value="M315SP017">M315SP017</option>
+                        <option value="M315SP020">M315SP020</option>
+                        <option value="M315SP022">M315SP022</option>
+                        <option value="M315SP023">M315SP023</option>
+                        <option value="M315SP024">M315SP024</option>
+                        <option value="M315SP027">M315SP027</option>
+                        <option value="M315SP109">M315SP109</option>
+                        <option value="M315SP118">M315SP118</option>
+                        <option value="M315SP119">M315SP119</option>
+                        <option value="M315SP211">M315SP211</option>
+                        <option value="M315SP212">M315SP212</option>
+                        <option value="M315SP217">M315SP217</option>
+                        <option value="M315SP220">M315SP220</option>
+                        <option value="M315SP222">M315SP222</option>
+                        <option value="M315SP308">M315SP308</option>
+                        <option value="M315SP309">M315SP309</option>
+                        <option value="M315SP318">M315SP318</option>
+                        <option value="M315SP403">M315SP403</option>
+                        <option value="M315SP407">M315SP407</option>
+                        <option value="M315SP408">M315SP408</option>
+                        <option value="M315SP413">M315SP413</option>
+                        <option value="M315SP426">M315SP426</option>
+                        <option value="M315SP427">M315SP427</option>
+                        <option value="M315SP429">M315SP429</option>
+                        <option value="M315SP430">M315SP430</option>
+                        <option value="M315SP431">M315SP431</option>
+                        <option value="M315SP434">M315SP434</option>
+                        <option value="M315SP435">M315SP435</option>
+                        <option value="M315SP438">M315SP438</option>
+                        <option value="M315SP439">M315SP439</option>
+                        <option value="M315SP440 - 441">M315SP440 - 441</option>
+                        <option value="M315SP442">M315SP442</option>
+                        <option value="M315SP443">M315SP443</option>
+                        <option value="M315SP446">M315SP446</option>
+                        <option value="M315SP448">M315SP448</option>
+                        <option value="M315SP453">M315SP453</option>
+                        <option value="M315SP454">M315SP454</option>
+                        <option value="M315SP455">M315SP455</option>
+                        <option value="M315SP457">M315SP457</option>
+                        <option value="M315SP458">M315SP458</option>
+                        <option value="M315SP510">M315SP510</option>
+                        <option value="M315SP512">M315SP512</option>
+                        <option value="M315SP514">M315SP514</option>
+                        <option value="M315SP612">M315SP612</option>
+                        <option value="M315SP614">M315SP614</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="M251SP403">M251SP403</option>
+                        <option value="M251SP407 - 408">M251SP407 - 408</option>
+                        <option value="M251SP410- 427">M251SP410- 427</option>
+                        <option value="M310SP027">M310SP027</option>
+                        <option value="M530SP404">M530SP404</option>
+                      </>
+                    )}
+                  </select>
+                ) : selectedMainEquipment === "DETECTARE_AUTOMATA" ? (
+                  <select
+                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                    value={equipmentCode}
+                    onChange={(e) => setEquipmentCode(e.target.value)}
+                    required
+                  >
+                    <option value="">
+                      Alege orice matriță (Toate înregistrate)
+                    </option>
+                    <option value="M250SP001 - 002">
+                      M250SP001 - 002 [PROGRESIV]
+                    </option>
+                    <option value="M315SP220">M315SP220 [TRANSFER]</option>
+                    <option value="M530SP404">M530SP404 [BLANKING]</option>
                   </select>
                 ) : (
                   <input
                     type="text"
-                    placeholder="Equipment code prefilled..."
-                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50"
+                    placeholder="Introduceți codul echipamentului..."
+                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50 font-medium"
                     value={equipmentCode}
                     onChange={(e) => setEquipmentCode(e.target.value)}
                     required
@@ -594,43 +743,52 @@ function MaintenanceReportsForm() {
                 )}
               </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Sub Equipment
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 font-medium"
                   value={subEquipment}
                   onChange={(e) => setSubEquipment(e.target.value)}
                   disabled={!selectedMainEquipment}
                 >
                   <option value="">Select Sub Equipment</option>
-                  {selectedData &&
-                    selectedData.subEquipment.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
+                  <option value="PUNCH">PUNCH (Module Poansoane)</option>
+                  <option value="TRIM">TRIM (Module Lame / Cuțite)</option>
+                  <option value="MECHANICAL">
+                    MECHANICAL (Structură / Ghidaje / Glisiere)
+                  </option>
+                  <option value="GENERAL">GENERAL / ALTELE</option>
                 </select>
               </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Defection Type
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 font-medium"
                   value={defectionType}
                   onChange={(e) => setDefectionType(e.target.value)}
                   disabled={!selectedMainEquipment}
                 >
                   <option value="">Select Defection Type</option>
-                  {selectedData &&
-                    selectedData.defectionTypes.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
+                  <option value="UZURA">
+                    Uzură Normală (Ascuțire / Corecții)
+                  </option>
+                  <option value="RUPTURA">
+                    Rupere / Ciobire Element Activ
+                  </option>
+                  <option value="BLOCAJ">
+                    Gripare / Blocaj Mecanic Glisieră
+                  </option>
+                  <option value="REGLAJ">
+                    Problemă Reglaj / Jocuri Incorecte
+                  </option>
+                  <option value="ALTELE">Alte Cauze Tehnice</option>
                 </select>
               </div>
             </div>

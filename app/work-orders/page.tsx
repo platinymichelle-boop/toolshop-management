@@ -35,35 +35,62 @@ function getISOWeekNumber(date: Date) {
     )
   );
 }
-
 export default function WorkOrdersPage() {
   const [tools, setTools] = useState<string[]>([]);
   const [selectedTool, setSelectedTool] = useState("");
-
-  // Stare reactivă pentru ceasul în timp real
   const [currentTime, setCurrentTime] = useState<string>("");
+  const [dbTechnicians, setDbTechnicians] = useState<any[]>([]);
 
-  // Rotație automată corelată pe săptămâna ISO
+  // NOU: Stări pentru controlul categoriilor de matrițe
+  const [selectedType, setSelectedType] = useState<string>("TOATE");
+  const [dbToolsWithData, setDbToolsWithData] = useState<any[]>([]);
+
   const currentWeek = getISOWeekNumber(new Date());
-
-  // CORECTURĂ OFFSET: Forțăm ca de la săptămâna 42, Shift 1 să devină TEAM_B (index 1)
   const rotationIndex = (currentWeek + 1) % 3;
+
+  const getTeamMembers = (teamCode: string, fallbackMembers: string[]) => {
+    if (dbTechnicians.length === 0) return fallbackMembers;
+    const filtered = dbTechnicians.filter(
+      (t) => t.team === teamCode || t.shift === teamCode || t.role === teamCode,
+    );
+    if (filtered.length === 0) return fallbackMembers;
+    return filtered.map((t) => t.name || t.full_name);
+  };
 
   const teams = [
     {
       code: "TEAM_A",
-      members: ["Guner Uslu", "Nita Razvan", "Danalache Claudiu"],
+      members: getTeamMembers("TEAM_A", [
+        "MATEESCU ANCUTA",
+        "STAN GEORGE",
+        "DIACONU FLORIAN",
+        "CIOBOTEA LIVIU",
+        "PREDA ALEXANDRU SANDEL",
+      ]),
     },
     {
       code: "TEAM_B",
-      members: ["Unciuleac Marcel", "Perjoiu Romulus", "Esanu Alin"],
+      members: getTeamMembers("TEAM_B", [
+        "BIDILICA ANDREI",
+        "BANESCU SORIN",
+        "ILIE OVIDIU",
+        "DORCIOMAN ROMEO",
+        "CRISTESCU NARCIS",
+        "DOBRESCU DRAGOS",
+      ]),
     },
     {
       code: "TEAM_C",
-      members: ["Chiran Nicolae", "Iancu Cristian", "Militaru Nicolae"],
+      members: getTeamMembers("TEAM_C", [
+        "POPA NICUSOR",
+        "BARBU COSMIN",
+        "PENESCU VALERIU",
+        "DOBRE GEORGE",
+        "HERACHE CRISTIAN",
+        "FIERARU NICOLAE",
+      ]),
     },
   ];
-
   const shifts = [
     {
       id: "Shift 1",
@@ -98,7 +125,6 @@ export default function WorkOrdersPage() {
   const [plannedDate, setPlannedDate] = useState("");
   const [priority, setPriority] = useState("MEDIUM");
 
-  // Efect pentru actualizarea ceasului în timp real (Format industrial HH:MM:SS)
   useEffect(() => {
     setCurrentTime(new Date().toLocaleTimeString("ro-RO"));
     const timer = setInterval(() => {
@@ -109,6 +135,7 @@ export default function WorkOrdersPage() {
 
   useEffect(() => {
     loadTools();
+    loadTechnicians();
   }, []);
 
   useEffect(() => {
@@ -117,20 +144,32 @@ export default function WorkOrdersPage() {
     }
   }, [selectedTool, statuses]);
 
+  async function loadTechnicians() {
+    try {
+      const { data, error } = await supabase.from("technicians").select("*");
+      if (error) {
+        console.error("Eroare la încărcarea tehnicienilor:", error.message);
+        return;
+      }
+      if (data) setDbTechnicians(data);
+    } catch (err: any) {
+      console.error("Catch Block Technicians Error:", err.message);
+    }
+  }
   async function loadTools() {
     try {
       const { data, error } = await supabase.rpc("get_unique_pm_tools");
-
       if (error) {
         console.error("RPC Error loading tools:", error.message);
         return;
       }
-
-      const uniqueTools = (data || [])
-        .map((item: any) => String(item.tool_number || "").trim())
-        .filter(Boolean);
-
-      setTools(uniqueTools);
+      if (data) {
+        setDbToolsWithData(data);
+        const uniqueTools = data
+          .map((item: any) => String(item.tool_number || "").trim())
+          .filter(Boolean);
+        setTools(uniqueTools);
+      }
     } catch (err: any) {
       console.error("Catch Block Error:", err.message);
     }
@@ -142,14 +181,13 @@ export default function WorkOrdersPage() {
       .select("*")
       .eq("tool_number", selectedTool)
       .in("status", statuses);
-
     setTasks(data || []);
     setSelectedActions([]);
   }
+
   async function generateWONumber(): Promise<string> {
     const currentYear = new Date().getFullYear();
     const prefix = `WO-${currentYear}-`;
-
     const { data, error } = await supabase
       .from("work_orders")
       .select("wo_number")
@@ -161,11 +199,12 @@ export default function WorkOrdersPage() {
       return `${prefix}0001`;
     }
 
+    // REZOLVARE: Adaugă [0] pentru a citi prima înregistrare găsită în array
     const lastWoNumber = data[0].wo_number;
     const parts = lastWoNumber.split("-");
+
     const lastSequence = parseInt(parts[2], 10);
     const nextSequence = isNaN(lastSequence) ? 1 : lastSequence + 1;
-
     const paddedSequence = String(nextSequence).padStart(4, "0");
     return `${prefix}${paddedSequence}`;
   }
@@ -191,6 +230,13 @@ export default function WorkOrdersPage() {
       ? tasks
       : tasks.filter((task) => task.frequency === selectedFrequency);
 
+  // Filtrare dinamică a butoanelor de matrițe în funcție de tab-ul activ selectat
+  const filteredToolsByTab = dbToolsWithData.filter((t: any) => {
+    if (selectedType === "TOATE") return true;
+    return (
+      (t.tool_type || "NEATRIBUIT").toUpperCase() === selectedType.toUpperCase()
+    );
+  });
   function selectAllActions() {
     const filteredIds = filteredTasks.map((t) => String(t.id));
     const allFilteredSelected = filteredIds.every((id) =>
@@ -221,12 +267,10 @@ export default function WorkOrdersPage() {
       alert("No tool selected");
       return;
     }
-
     if (!selectedShift) {
       alert("Please select a Shift team");
       return;
     }
-
     if (selectedWorkOrderActions.length === 0) {
       alert("No actions selected from the active frequency filter");
       return;
@@ -235,7 +279,6 @@ export default function WorkOrdersPage() {
     try {
       setIsGenerating(true);
       const woNumber = await generateWONumber();
-
       const { data: woData, error: woError } = await supabase
         .from("work_orders")
         .insert({
@@ -281,13 +324,12 @@ export default function WorkOrdersPage() {
   }
 
   const frequencies = [
-    { value: "ALL", label: "All Frequencies" },
-    { value: "1Z", label: "Daily (1Z)" },
-    { value: "1S", label: "Weekly (1S)" },
-    { value: "1L", label: "Monthly (1L)" },
-    { value: "3L", label: "Quarterly (3L)" },
-    { value: "6L", label: "Semi Annual (6L)" },
-    { value: "1A", label: "Yearly (1A)" },
+    { value: "ALL", label: "Toate Frecvențele" },
+    { value: "Săptămânal", label: "Săptămânal (1S)" },
+    { value: "Lunar", label: "Lunar (1L)" },
+    { value: "La 3 Audit", label: "Quarterly (3L)" },
+    { value: "Semestrial", label: "Semi Annual (6L)" },
+    { value: "Anual", label: "Yearly (1A)" },
   ];
 
   const isAllFilteredSelected =
@@ -295,6 +337,7 @@ export default function WorkOrdersPage() {
     filteredTasks
       .map((t) => String(t.id))
       .every((id) => selectedActions.includes(id));
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* HEADER MANAGER PANEL */}
@@ -315,33 +358,46 @@ export default function WorkOrdersPage() {
           View History &rarr;
         </Link>
       </div>
-
-      {/* BARĂ ORIZONTALĂ SUPERIOARĂ PENTRU UTILAJE */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3 shadow-sm">
-        <div className="flex justify-between items-center">
-          <label className="block text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
-            Select Active Industrial Tool / Equipment
-          </label>
-          <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-            Total Tools Loaded: {tools.length}
-          </span>
+      {/* UTILAJE SELECTOR CU FILTRARE PE CATEGORII */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
+              Select Active Industrial Tool / Equipment
+            </label>
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 gap-1 self-start sm:self-auto">
+            {["TOATE", "PROGRESIV", "TRANSFER", "BLANKING", "NEATRIBUIT"].map(
+              (tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setSelectedType(tab)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${selectedType === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  {tab}
+                </button>
+              ),
+            )}
+          </div>
         </div>
+
         <div className="w-full overflow-x-auto pb-2">
-          {tools.length === 0 ? (
+          {filteredToolsByTab.length === 0 ? (
             <span className="text-xs font-medium text-slate-400 italic">
-              Loading tools from database...
+              Nu există matrițe în categoria selectată...
             </span>
           ) : (
             <div className="grid grid-cols-4 md:grid-cols-8 lg:grid-cols-10 gap-2 min-w-[640px] md:min-w-none">
-              {tools.map((tool) => (
+              {filteredToolsByTab.map((t: any) => (
                 <button
-                  key={tool}
+                  key={t.tool_number}
                   type="button"
-                  onClick={() => setSelectedTool(tool)}
-                  className={`px-3 py-3 rounded-lg text-sm font-bold tracking-tight border text-center transition-all truncate ${selectedTool === tool ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100 scale-[1.02]" : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"}`}
-                  title={tool}
+                  onClick={() => setSelectedTool(t.tool_number)}
+                  className={`px-3 py-3 rounded-lg text-sm font-bold tracking-tight border text-center transition-all truncate ${selectedTool === t.tool_number ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100 scale-[1.02]" : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"}`}
+                  title={t.tool_number}
                 >
-                  {tool}
+                  {t.tool_number}
                 </button>
               ))}
             </div>
@@ -349,7 +405,7 @@ export default function WorkOrdersPage() {
         </div>
       </div>
 
-      {/* SECTIUNE ROTATIE AUTOMATA + CEAS DIGITAL IN TIMP REAL */}
+      {/* ROTATIE AUTOMATA + CEAS */}
       <div className="bg-slate-900 text-white border border-slate-800 rounded-xl p-5 shadow-sm font-mono text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="space-y-2">
           <div className="text-sm font-black text-blue-400 uppercase tracking-wide">
@@ -367,7 +423,6 @@ export default function WorkOrdersPage() {
             ))}
           </div>
         </div>
-        {/* Widget Ceas Electronic Industrial */}
         <div className="bg-slate-800 border border-slate-700 rounded-xl px-5 py-3 text-center sm:text-right min-w-[140px] shadow-inner self-stretch sm:self-auto flex flex-col justify-center">
           <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold mb-0.5">
             System Time
@@ -377,9 +432,8 @@ export default function WorkOrdersPage() {
           </span>
         </div>
       </div>
-
+      {/* INTERFATA PICKER SCHIMBURI ȘI PARAMETRI */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* INTERFATA PICKER SCHIMBURI */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-sm">
           <label className="block text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
             Shift Team Assignment (Auto-Selected based on ISO rotation)
@@ -423,7 +477,7 @@ export default function WorkOrdersPage() {
             ))}
           </div>
         </div>
-        {/* PARAMETRII ADIȚIONALI */}
+
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-sm h-full flex flex-col justify-center">
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-400 font-mono mb-2">
@@ -453,7 +507,8 @@ export default function WorkOrdersPage() {
           </div>
         </div>
       </div>
-      {/* FILTRE STATUS ȘI LISTĂ SARCINI PREVENTIVE DETECTATE */}
+
+      {/* SARCINI PREVENTIVE */}
       {selectedTool && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col xl:flex-row xl:items-center justify-between gap-4">

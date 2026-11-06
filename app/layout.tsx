@@ -135,7 +135,8 @@ export default function RootLayout({
           content="black-translucent"
         />
       </head>
-      <body className="min-h-screen w-full flex flex-col bg-gray-50 text-slate-900 overflow-x-hidden antialiased">
+      {/* CORECTURĂ h-full și h-screen pe body pentru a bloca viewport-ul */}
+      <body className="h-screen w-full flex flex-col bg-gray-50 text-slate-900 overflow-hidden antialiased">
         <Toaster position="top-right" reverseOrder={false} />
 
         <LanguageProvider>
@@ -144,13 +145,14 @@ export default function RootLayout({
               Se încarcă configurația...
             </div>
           ) : (
-            <div className="flex-1 w-full flex min-h-screen">
+            /* CORECTURĂ: max-h-screen și overflow-hidden forțează Sidebar-ul să stea fix pe înălțimea monitorului */
+            <div className="flex-1 w-full flex max-h-screen overflow-hidden">
               {/* Sidebar-ul se ascunde complet dacă ar trebui ascuns */}
               {!shouldHideSidebar && <Sidebar />}
 
-              <div className="flex-1 flex flex-col min-w-0 w-full">
+              {/* Containerul din dreapta are acum scroll independent */}
+              <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
                 {/* 
-                  [LOGICĂ MODIFICATĂ] 
                   Antetul utiliar se randează doar pentru utilizatorii de producție 
                   și DOAR dacă NU se află pe pagina dedicată aprobărilor trimise pe email.
                 */}
@@ -171,12 +173,16 @@ export default function RootLayout({
                   </header>
                 )}
 
-                {/* Main-ul se extinde acum pe tot ecranul, eliminând padding-ul când Sidebar-ul este ascuns */}
+                {/* 
+                  CORECTURĂ VIZUALĂ: Am adăugat h-full și overflow-y-auto pe ambele ramuri. 
+                  Acum, când dai scroll în jos în fișa tehnică, doar conținutul se mișcă, 
+                  iar Sidebar-ul negru din stânga rămâne perfect intact până jos pe ecran.
+                */}
                 <main
                   className={
                     shouldHideSidebar
-                      ? "w-full p-0 flex-1 min-h-0 bg-slate-50 overflow-y-auto"
-                      : "flex-1 w-full min-w-0 p-4 md:p-8 overflow-x-auto"
+                      ? "w-full p-0 flex-1 h-full bg-slate-50 overflow-y-auto"
+                      : "w-full p-4 md:p-8 flex-1 h-full bg-slate-50 overflow-y-auto"
                   }
                 >
                   {children}
