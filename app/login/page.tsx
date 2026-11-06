@@ -97,7 +97,7 @@ export default function LoginPage() {
           return;
         }
 
-        router.push("/dashboard");
+        router.push("/maintenance-reports");
       }
     } catch (error: any) {
       alert("Sistem Validare: " + error.message);
