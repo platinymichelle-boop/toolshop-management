@@ -65,7 +65,7 @@ export default function PreventiveMaintenanceDashboard() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [weekFilter, setWeekFilter] = useState<string>("THIS_WEEK");
+  const [weekFilter, setWeekFilter] = useState<string>("ALL");
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -132,6 +132,12 @@ export default function PreventiveMaintenanceDashboard() {
     };
 
     return {
+      ALL: {
+        start: new Date(2000, 0, 1),
+        end: new Date(2100, 11, 31),
+        label: "All Work Orders",
+        period: "All Work Orders",
+      },
       LAST_WEEK: {
         start: startLast,
         end: endLast,
@@ -156,6 +162,10 @@ export default function PreventiveMaintenanceDashboard() {
   const filteredWorkOrders = useMemo(() => {
     const activeRange = dateRanges[weekFilter as keyof typeof dateRanges];
     if (!activeRange) return [];
+
+    if (weekFilter === "ALL") {
+      return workOrders;
+    }
 
     return workOrders.filter((wo) => {
       if (!wo.scheduled_date) return false;
@@ -284,6 +294,7 @@ export default function PreventiveMaintenanceDashboard() {
             onChange={(e) => setWeekFilter(e.target.value)}
             className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-500"
           >
+            <option value="ALL">All Work Orders</option>
             <option value="LAST_WEEK">{dateRanges.LAST_WEEK.label}</option>
             <option value="THIS_WEEK">{dateRanges.THIS_WEEK.label}</option>
             <option value="NEXT_WEEK">{dateRanges.NEXT_WEEK.label}</option>

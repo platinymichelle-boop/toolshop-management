@@ -112,7 +112,15 @@ export default function WorkOrdersPage() {
     },
   ];
 
-  const [selectedShift, setSelectedShift] = useState("Shift 1");
+  const getCurrentShift = () => {
+    const hour = new Date().getHours();
+
+    if (hour >= 7 && hour < 15) return "Shift 1";
+    if (hour >= 15 && hour < 23) return "Shift 2";
+    return "Shift 3";
+  };
+
+  const [selectedShift, setSelectedShift] = useState(getCurrentShift());
   const [statuses, setStatuses] = useState<string[]>([
     "OPEN",
     "DUE_SOON",
