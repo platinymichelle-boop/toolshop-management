@@ -72,14 +72,22 @@ export default function RootLayout({
     verifyUserAccess();
   }, [pathname]);
 
-  // Logica de redirecționare automată: utilizatorii de producție sunt ținuți doar pe zonele lor permise
+  // Redirecționare automată către /weekly-maintenance ca pagină principală (/)
+  // și menținerea utilizatorilor de producție pe zonele lor permise
   useEffect(() => {
-    if (checkingAuth || !isProductionUser) return;
+    if (checkingAuth) return;
 
     const isWeeklyMaintenance = pathname === "/weekly-maintenance";
 
-    if (!isWeeklyMaintenance && !isApprovalPage) {
-      router.push("/weekly-maintenance");
+    // Dacă utilizatorul accesează pagina principală "/", îl trimitem direct pe Preventive Maintenance
+    if (pathname === "/") {
+      router.replace("/weekly-maintenance");
+      return;
+    }
+
+    // Utilizatorii de producție sunt ținuți doar pe /weekly-maintenance sau /approval/...
+    if (isProductionUser && !isWeeklyMaintenance && !isApprovalPage) {
+      router.replace("/weekly-maintenance");
     }
   }, [isProductionUser, pathname, checkingAuth, router, isApprovalPage]);
 
@@ -135,7 +143,6 @@ export default function RootLayout({
           content="black-translucent"
         />
       </head>
-      {/* CORECTURĂ h-full și h-screen pe body pentru a bloca viewport-ul */}
       <body className="h-screen w-full flex flex-col bg-gray-50 text-slate-900 overflow-hidden antialiased">
         <Toaster position="top-right" reverseOrder={false} />
 
@@ -145,17 +152,10 @@ export default function RootLayout({
               Se încarcă configurația...
             </div>
           ) : (
-            /* CORECTURĂ: max-h-screen și overflow-hidden forțează Sidebar-ul să stea fix pe înălțimea monitorului */
             <div className="flex-1 w-full flex max-h-screen overflow-hidden">
-              {/* Sidebar-ul se ascunde complet dacă ar trebui ascuns */}
               {!shouldHideSidebar && <Sidebar />}
 
-              {/* Containerul din dreapta are acum scroll independent */}
               <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-                {/* 
-                  Antetul utiliar se randează doar pentru utilizatorii de producție 
-                  și DOAR dacă NU se află pe pagina dedicată aprobărilor trimise pe email.
-                */}
                 {shouldHideSidebar && !isApprovalPage && (
                   <header className="w-full bg-slate-900 text-white px-6 py-3 flex justify-between items-center shadow-md shrink-0 border-b border-slate-800">
                     <div className="flex items-center gap-2">
@@ -173,11 +173,6 @@ export default function RootLayout({
                   </header>
                 )}
 
-                {/* 
-                  CORECTURĂ VIZUALĂ: Am adăugat h-full și overflow-y-auto pe ambele ramuri. 
-                  Acum, când dai scroll în jos în fișa tehnică, doar conținutul se mișcă, 
-                  iar Sidebar-ul negru din stânga rămâne perfect intact până jos pe ecran.
-                */}
                 <main
                   className={
                     shouldHideSidebar
